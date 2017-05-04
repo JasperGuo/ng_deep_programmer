@@ -26,3 +26,6 @@ Randomly build a data flow graph, and then assign input nodes data types, and ba
 2. Remove unnecessary leaf nodes
    1. Add edge from higher level to leaf node
 3. Generate program according to the graph
+   1. Based on the number of children each node has, select a function for it, and assign a data type for each node
+   2. Run topological sort
+   3. Assign variable name to each vertex in graph

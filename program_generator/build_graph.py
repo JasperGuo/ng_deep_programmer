@@ -9,7 +9,7 @@ import random
 from collections import deque
 import numpy as np
 from pprint import pprint
-from func_set import FUNCTIONS, FunctionType, select_function
+from func_set import FUNCTIONS, FunctionType, select_function, select_lambda
 
 
 MAX_CHILDREN = 2
@@ -48,6 +48,11 @@ class Node:
         self.children = []
         self.parents = []
         self.level = -1
+
+    @staticmethod
+    def erase_node_states(nodes):
+        for node in nodes:
+            node.erase_states()
 
 
 class Graph:
@@ -102,6 +107,88 @@ class Graph:
         print(self.edges)
         pprint(self.vertices_attrs)
 
+    def serialize(self):
+        """
+        Serialize Graph Instance to Dict
+        :return:
+        """
+        return {
+            "vertices": self.vertices,
+            "edges": self.edges,
+            "vertices_attrs": self.vertices_attrs
+        }
+
+    @classmethod
+    def deserialize(cls, graph_json):
+        """
+        Initialize graph instance from json
+        :return:
+        """
+        graph = Graph(graph_json["vertices"], graph_json["edges"])
+        graph.vertices_attrs = graph_json["vertices_attrs"]
+        return graph
+
+
+class Program:
+    def __init__(self, graph, tree, topological_sort_result):
+        self.graph = graph
+        self.tree = tree
+        self.topological_sort_result = topological_sort_result
+
+    def print(self):
+        for v in self.topological_sort_result:
+            func = self.graph.get_attr(v, "func")
+            variable_name = self.graph.get_attr(v, "variable_name")
+            if not func:
+                # Input node
+                print(variable_name, " = ", self.graph.get_attr(v, "data_type"))
+            else:
+
+                lambda_exp = self.graph.get_attr(v, "lambda")
+
+                if not lambda_exp:
+                    print(variable_name, " = ", func, '(',
+                          ', '.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)]), ")")
+                else:
+                    print(variable_name, " = ", func, '(', lambda_exp, ",",
+                          ', '.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)]), ")")
+
+    def to_string(self):
+        string = list()
+        for v in self.topological_sort_result:
+            func = self.graph.get_attr(v, "func")
+            variable_name = self.graph.get_attr(v, "variable_name")
+            if not func:
+                # Input node
+                string.append(','.join([variable_name, self.graph.get_attr(v, "data_type")]))
+            else:
+
+                lambda_exp = self.graph.get_attr(v, "lambda")
+
+                if not lambda_exp:
+                    string.append(','.join([variable_name, func, ','.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
+                else:
+                    string.append(','.join([variable_name, func, lambda_exp, ','.join(
+                        [self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
+        return '\n'.join(string)
+
+    def serialize(self):
+        """
+        Serialize Program Instance to json
+        :return:
+        """
+        return {
+            "graph": self.graph.serialize(),
+            "tree": self.tree,
+            "topological_sort_result": self.topological_sort_result
+        }
+
+    @classmethod
+    def deserialize(cls, program_json):
+        graph = Graph.deserialize(program_json["graph"])
+        program = cls(graph, program_json["tree"], program_json["topological_sort_result"])
+        return program
+
 
 def topological_sort(graph):
 
@@ -132,26 +219,18 @@ def topological_sort(graph):
             })
             sorted_vertices.append(_v)
 
-    is_done = False
     curr_idx = 0
-    while not is_done:
-        next_vertex = None
-
-        while curr_idx < len(vertices):
-            v = vertices[curr_idx]
-            m = graph.get_attr(v, "mark")
-            curr_idx += 1
-            if m == UNMARKED:
-                next_vertex = v
-                break
-        else:
-            is_done = True
-
-        _visit(next_vertex)
+    while curr_idx < len(vertices):
+        v = vertices[curr_idx]
+        m = graph.get_attr(v, "mark")
+        curr_idx += 1
+        if m == UNMARKED:
+            next_vertex = v
+            _visit(next_vertex)
 
     reversed_vertices = list(reversed(sorted_vertices))
 
-    print("Topological Sort: ", reversed_vertices)
+    # print("Topological Sort: ", reversed_vertices)
     return reversed_vertices
 
 
@@ -180,19 +259,13 @@ def bfs_to_label_level(root_node):
         next_count += len(node.children)
 
         if curr == count:
-            # print("next")
             level += 1
             count = next_count
             curr = 0
             next_count = 0
 
 
-def erase_node_states(nodes):
-    for node in nodes:
-        node.erase_states()
-
-
-def generate(num_input_node, num_internal_node):
+def generate_data_flow_graph(num_input_node, num_internal_node):
     """
     Generate random data flow graph
     :param num_input_node:
@@ -224,8 +297,6 @@ def generate(num_input_node, num_internal_node):
                 # 4 functions require 2 arguments, 11 functions require only 1 arguments
                 num_children = np.random.choice([0, 1, 2], p=[1/3, 22/45, 8/45])
 
-            # num_children = random.randint(0, min(MAX_CHILDREN, len(candidates)))
-
             selected_nodes = random.sample(candidates, num_children)
 
             for n in selected_nodes:
@@ -248,14 +319,14 @@ def generate(num_input_node, num_internal_node):
                 if highest_level_node_count <= num_input_node:
                     is_valid = True
                 else:
-                    erase_node_states(nodes + [root_node])
+                    Node.erase_node_states(nodes + [root_node])
             else:
-                erase_node_states(nodes + [root_node])
+                Node.erase_node_states(nodes + [root_node])
         else:
-            erase_node_states(nodes + [root_node])
+            Node.erase_node_states(nodes + [root_node])
 
     string = dfs_to_string(root_node)
-    print("tree: %s " % string)
+    # print("tree: %s " % string)
 
     # Build Graph
     edges = list()
@@ -265,8 +336,8 @@ def generate(num_input_node, num_internal_node):
         for child in n.children:
             edges.append((child.id, n.id))
 
-    print(edges)
-    print(vertices)
+    # print(edges)
+    # print(vertices)
 
     # Select Leaf
     leaves = [n for n in nodes if n.level == highest_level]
@@ -283,23 +354,24 @@ def generate(num_input_node, num_internal_node):
         candidates = [n for n in nodes if n.level >= al.level and n != al]
         selected_node = random.sample(candidates, 1)[0]
         edges.append((selected_node.id, al.id))
-    print("==================================")
-    print("Final Graph: ")
-    print(vertices)
-    print(edges)
+    # print("==================================")
+    # print("Final Graph: ")
+    # print(vertices)
+    # print(edges)
 
-    return Graph(vertices, edges)
+    return Graph(vertices, edges), string
 
 
-def assign_variable_name(graph):
+def assign_variable_name(graph, topological_sort_result):
     """
     Assign variable name to vertex
     :param graph:
+    :param topological_sort_result
     :return:
     """
     variable_names = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "x", "y"]
 
-    for idx, vertex in enumerate(graph.vertices):
+    for idx, vertex in enumerate(topological_sort_result):
         graph.set_attr(vertex, {
             "variable_name": variable_names[idx]
         })
@@ -342,6 +414,11 @@ def add_function(graph):
             arguments = func_definition["arguments"]
         else:
             arguments = func_definition["arguments"][1:]
+            _candidates = select_lambda(func_definition["arguments"][0])
+            lambda_exp = random.sample(_candidates, 1)[0]
+            graph.set_attr(node, {
+                "lambda": lambda_exp
+            })
 
         for (n, data_type) in zip(parent, arguments):
             n_type = graph.get_attr(n, "data_type")
@@ -354,23 +431,30 @@ def add_function(graph):
                 if n_type != data_type:
                     raise Exception("Data Type mismatch")
 
-    graph.print()
+    # graph.print()
 
 
-def generate_program(graph, sorted_vertices):
-    for v in sorted_vertices:
-        func = graph.get_attr(v, "func")
-        variable_name = graph.get_attr(v, "variable_name")
-        if not func:
-            # Input node
-            print(variable_name)
-        else:
-            print(variable_name, " = ", func, '(', ', '.join([graph.get_attr(v, "variable_name") for v in graph.parents(v)]), ")")
+def generate_program(num_input_node, num_internal_node):
+    """
+    Generate program
+    :param num_input_node:
+    :param num_internal_node:
+    :return:
+    """
+    Node.curr_id = 0
+    data_flow_graph, tree = generate_data_flow_graph(num_input_node, num_internal_node)
+    add_function(data_flow_graph)
+    sort_result = topological_sort(data_flow_graph)
+    assign_variable_name(data_flow_graph, sort_result)
+    p = Program(data_flow_graph, tree, sort_result)
+    return p
 
 
 if __name__ == "__main__":
-    data_flow_graph = generate(1, 5)
-    assign_variable_name(data_flow_graph)
-    add_function(data_flow_graph)
-    sort_result = topological_sort(data_flow_graph)
-    generate_program(data_flow_graph, sort_result)
+    program = generate_program(num_input_node=2, num_internal_node=4)
+    program.print()
+
+    program_dict = program.serialize()
+
+    p = Program.deserialize(program_dict)
+    p.print()

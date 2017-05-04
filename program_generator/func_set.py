@@ -265,3 +265,33 @@ def select_function(num_arguments, return_type=False):
                 candidates.append(key)
 
     return candidates
+
+
+def select_lambda(fn_type):
+    """
+    Select lambda
+    :param fn_type:
+    :return:
+    """
+    candidates = list()
+    if fn_type == DataType.FN_INT_INT_TO_INT:
+        candidates = ["MAX", "MIN", "(*)", "(-)", "(+)"]
+        return candidates
+
+    if fn_type == DataType.FN_INT_TO_BOOL:
+        for key, value in FUNCTIONS.items():
+            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.BOOL:
+                candidates.append(key)
+        return candidates
+
+    if fn_type == DataType.FN_INT_TO_INT:
+        for key, value in FUNCTIONS.items():
+            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.INT:
+                candidates.append(key)
+        return candidates
+
+    # LIST -> INT
+    for key, value in FUNCTIONS.items():
+        if len(value["arguments"]) == 1 and value["arguments"][0] == DataType.INT_LIST and value["return_type"] == DataType.INT:
+            candidates.append(key)
+    return candidates
