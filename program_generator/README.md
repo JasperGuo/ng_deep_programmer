@@ -9,11 +9,20 @@ Randomly build a data flow graph, and then assign input nodes data types, and ba
 | Node Type     | # input edges | # output edges |
 | ------------- | ------------- | -------------- |
 | Input Node    | 0             | NOT LIMIT      |
-| Output Node   | {1, 2, 3}     | 0              |
-| Internal Node | {1, 2, 3}     | 1              |
+| Output Node   | {1, 2}        | 0              |
+| Internal Node | {1, 2}        | NOT LIMIT      |
 
 #### Constrain
 
 1. **DAG**
 2. No edges between input nodes
 3. Edge Must from lower level to higher level
+
+#### Construction
+
+1. Randomly generate a tree
+   1. The number of leaf node > The number of input node
+   2. The number of nodes in the highest level <= The number of input node
+2. Remove unnecessary leaf nodes
+   1. Add edge from higher level to leaf node
+3. Generate program according to the graph
