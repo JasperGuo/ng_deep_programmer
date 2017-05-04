@@ -91,16 +91,18 @@ class Graph:
         return vertices
 
     def set_attr(self, vertex_label, attrs):
-        if vertex_label not in self.vertices_attrs:
-            self.vertices_attrs[vertex_label] = {}
-        self.vertices_attrs[vertex_label].update(attrs)
+        key = str(vertex_label)
+        if key not in self.vertices_attrs:
+            self.vertices_attrs[key] = {}
+        self.vertices_attrs[key].update(attrs)
 
     def get_attr(self, vertex_label, attr_name):
-        if vertex_label not in self.vertices_attrs:
+        key = str(vertex_label)
+        if key not in self.vertices_attrs:
             return None
-        if attr_name not in self.vertices_attrs[vertex_label]:
+        if attr_name not in self.vertices_attrs[key]:
             return None
-        return self.vertices_attrs[vertex_label][attr_name]
+        return self.vertices_attrs[key][attr_name]
 
     def print(self):
         print(self.vertices)
