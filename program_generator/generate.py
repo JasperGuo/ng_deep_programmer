@@ -47,6 +47,7 @@ def main(num_input, length, num, save_path):
             print(program.inputs())
             print(program.expressions())
             print(program.tree)
+            print(program.output())
             print("===============================")
 
 

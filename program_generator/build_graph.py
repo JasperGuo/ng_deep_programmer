@@ -173,9 +173,6 @@ class Program:
         return '\n'.join(string)
 
     def inputs(self):
-        """
-        :return:
-        """
         _inputs = list()
         for vertex in self.graph.vertices:
             func = self.graph.get_attr(vertex, "func")
@@ -186,6 +183,17 @@ class Program:
                     "variable_name": self.graph.get_attr(vertex, "variable_name")
                 })
         return _inputs
+
+    def output(self):
+
+        for vertex in self.graph.vertices:
+            out_degree = self.graph.outdegree(vertex)
+            if out_degree == 0:
+                return {
+                    "vertex": vertex,
+                    "data_type": self.graph.get_attr(vertex, "data_type"),
+                    "variable_name": self.graph.get_attr(vertex, "variable_name")
+                }
 
     def expressions(self):
         """

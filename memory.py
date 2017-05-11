@@ -29,3 +29,30 @@ class MemoryEntry:
 
     def __repr__(self):
         return self.__str__()
+
+
+class Memory:
+    def __init__(self):
+        self._memory_dict = dict()
+        self._memory_list = list()
+
+    def read(self, variable_name):
+        if variable_name not in self._memory_dict:
+            return None
+        return self._memory_dict[variable_name]
+
+    def write(self, variable_name, value):
+        """
+        :param variable_name:
+        :param value: MemoryEntry instance
+        :return:
+        """
+        self._memory_dict[variable_name] = value
+        self._memory_list.append(value)
+
+    def __str__(self):
+        memory_str = ', '.join([str(me) for me in self._memory_list])
+        return memory_str
+
+    def __repr__(self):
+        return self.__str__()
