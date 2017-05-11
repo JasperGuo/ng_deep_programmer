@@ -1,0 +1,5 @@
+# coding=utf8
+
+MIN_VALUE = -256
+MAX_VALUE = 256
+INT_LIST_MAX_LENGTH = 20

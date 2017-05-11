@@ -1,5 +1,7 @@
 # coding=utf8
 
+import json
+
 
 class MemoryEntry:
     """
@@ -19,6 +21,14 @@ class MemoryEntry:
     @property
     def value(self):
         return self._value
+
+    @property
+    def type(self):
+        return self._type
+
+    @property
+    def name(self):
+        return self._name
 
     def __str__(self):
 

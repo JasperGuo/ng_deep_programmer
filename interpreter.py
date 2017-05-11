@@ -2,6 +2,7 @@
 
 from program_generator.func_set import FUNCTIONS, FunctionType, DataType
 from memory import MemoryEntry, Memory
+import program_settings as ps
 
 
 def interpret(memory, expression):
@@ -12,7 +13,8 @@ def interpret(memory, expression):
     :return:
     """
     return_value = expression[0]
-    func_def = FUNCTIONS[expression[1]]
+    func_name = expression[1]
+    func_def = FUNCTIONS[func_name]
     args_num = len(func_def["arguments"])
     func = func_def["func"]
     func_type = func_def["func_type"]
@@ -24,7 +26,7 @@ def interpret(memory, expression):
             value=result,
             name=return_value,
             src1=argument,
-            opt=func,
+            opt=func_name,
             data_type=func_def["return_type"]
         )
     elif args_num == 2:
@@ -36,7 +38,7 @@ def interpret(memory, expression):
                 value=result,
                 name=return_value,
                 src1=argument,
-                opt=func,
+                opt=func_name,
                 data_type=func_def["return_type"]
             )
         else:
@@ -48,7 +50,7 @@ def interpret(memory, expression):
                 name=return_value,
                 src1=argument1,
                 src2=argument2,
-                opt=func,
+                opt=func_name,
                 data_type=func_def["return_type"]
             )
     else:
@@ -62,7 +64,7 @@ def interpret(memory, expression):
                 name=return_value,
                 src1=argument1,
                 src2=argument2,
-                opt=func,
+                opt=func_name,
                 data_type=func_def["return_type"]
             )
         else:
@@ -76,9 +78,27 @@ def interpret(memory, expression):
                 src1=argument1,
                 src2=argument2,
                 src3=argument3,
-                opt=func,
+                opt=func_name,
                 data_type=func_def["return_type"]
             )
+
+    if memory_entry.value is None:
+        raise Exception("Output is None")
+
+    # Check value
+    if memory_entry.type == DataType.INT:
+        # INT
+        if (memory_entry.value < ps.MIN_VALUE) or (memory_entry.value > ps.MAX_VALUE):
+            raise Exception("Value out of range")
+    else:
+        # INT LIST
+        if len(memory_entry.value) > ps.INT_LIST_MAX_LENGTH:
+            raise Exception("INT LIST out of range")
+
+        for v in memory_entry.value:
+            if v < ps.MIN_VALUE or v > ps.MAX_VALUE:
+                raise Exception("INT LIST Value out of range")
+
     memory.write(return_value, memory_entry)
 
 
@@ -118,6 +138,6 @@ if __name__ == "__main__":
     _expressions = [['b', 'REVERSE', 'a'], ['c', 'SCAN1', 'MAX', 'b']]
     _output_variable_name = "c"
 
-    _memory, output = run(_inputs, _expressions, _output_variable_name)
+    _memory, _output = run(_inputs, _expressions, _output_variable_name)
     print(_memory)
-    print(output)
+    print(_output)

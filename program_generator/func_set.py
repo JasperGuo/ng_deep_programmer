@@ -277,11 +277,11 @@ def select_lambda(fn_type):
         candidates = ["MAX", "MIN", "(*)", "(-)", "(+)"]
     elif fn_type == DataType.FN_INT_TO_BOOL:
         for key, value in FUNCTIONS.items():
-            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.BOOL:
+            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.BOOL and len(value["arguments"]) == 1:
                 candidates.append(key)
     else:
         # INT to INT
         for key, value in FUNCTIONS.items():
-            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.INT:
+            if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.INT and len(value["arguments"]) == 1:
                 candidates.append(key)
     return candidates

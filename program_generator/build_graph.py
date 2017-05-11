@@ -9,7 +9,7 @@ import random
 from collections import deque
 import numpy as np
 from pprint import pprint
-from func_set import FUNCTIONS, FunctionType, select_function, select_lambda
+from .func_set import FUNCTIONS, FunctionType, select_function, select_lambda
 
 MAX_CHILDREN = 2
 MIN_CHILDREN = 1
@@ -126,113 +126,6 @@ class Graph:
         graph = Graph(graph_json["vertices"], graph_json["edges"])
         graph.vertices_attrs = graph_json["vertices_attrs"]
         return graph
-
-
-class Program:
-    def __init__(self, graph, tree, topological_sort_result):
-        self.graph = graph
-        self.tree = tree
-        self.topological_sort_result = topological_sort_result
-
-    def print(self):
-        for v in self.topological_sort_result:
-            func = self.graph.get_attr(v, "func")
-            variable_name = self.graph.get_attr(v, "variable_name")
-            if not func:
-                # Input node
-                print(variable_name, " = ", self.graph.get_attr(v, "data_type"))
-            else:
-
-                lambda_exp = self.graph.get_attr(v, "lambda")
-
-                if not lambda_exp:
-                    print(variable_name, " = ", func, '(',
-                          ', '.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)]), ")")
-                else:
-                    print(variable_name, " = ", func, '(', lambda_exp, ",",
-                          ', '.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)]), ")")
-
-    def to_string(self):
-        string = list()
-        for v in self.topological_sort_result:
-            func = self.graph.get_attr(v, "func")
-            variable_name = self.graph.get_attr(v, "variable_name")
-            if not func:
-                # Input node
-                string.append(','.join([variable_name, self.graph.get_attr(v, "data_type")]))
-            else:
-
-                lambda_exp = self.graph.get_attr(v, "lambda")
-
-                if not lambda_exp:
-                    string.append(','.join([variable_name, func, ','.join(
-                        [self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
-                else:
-                    string.append(','.join([variable_name, func, lambda_exp, ','.join(
-                        [self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
-        return '\n'.join(string)
-
-    def inputs(self):
-        _inputs = list()
-        for vertex in self.graph.vertices:
-            func = self.graph.get_attr(vertex, "func")
-            if not func:
-                _inputs.append({
-                    "vertex": vertex,
-                    "data_type": self.graph.get_attr(vertex, "data_type"),
-                    "variable_name": self.graph.get_attr(vertex, "variable_name")
-                })
-        return _inputs
-
-    def output(self):
-
-        for vertex in self.graph.vertices:
-            out_degree = self.graph.outdegree(vertex)
-            if out_degree == 0:
-                return {
-                    "vertex": vertex,
-                    "data_type": self.graph.get_attr(vertex, "data_type"),
-                    "variable_name": self.graph.get_attr(vertex, "variable_name")
-                }
-
-    def expressions(self):
-        """
-        Get program expression
-        :return:
-        """
-        exprs = list()
-        for v in self.topological_sort_result:
-            func = self.graph.get_attr(v, "func")
-            variable_name = self.graph.get_attr(v, "variable_name")
-            if func:
-
-                lambda_exp = self.graph.get_attr(v, "lambda")
-
-                if not lambda_exp:
-                    expr = [variable_name, func] + [self.graph.get_attr(v, "variable_name") for v in
-                                                    self.graph.parents(v)]
-                else:
-                    expr = [variable_name, func, lambda_exp] + [self.graph.get_attr(v, "variable_name") for v in
-                                                                self.graph.parents(v)]
-                exprs.append(expr)
-        return exprs
-
-    def serialize(self):
-        """
-        Serialize Program Instance to json
-        :return:
-        """
-        return {
-            "graph": self.graph.serialize(),
-            "tree": self.tree,
-            "topological_sort_result": self.topological_sort_result
-        }
-
-    @classmethod
-    def deserialize(cls, program_json):
-        graph = Graph.deserialize(program_json["graph"])
-        program = cls(graph, program_json["tree"], program_json["topological_sort_result"])
-        return program
 
 
 def topological_sort(graph):
@@ -491,15 +384,4 @@ def generate_program(num_input_node, num_internal_node):
     add_function(data_flow_graph)
     sort_result = topological_sort(data_flow_graph)
     assign_variable_name(data_flow_graph, sort_result)
-    p = Program(data_flow_graph, tree, sort_result)
-    return p
-
-
-if __name__ == "__main__":
-    program = generate_program(num_input_node=2, num_internal_node=4)
-    program.print()
-
-    program_dict = program.serialize()
-
-    p = Program.deserialize(program_dict)
-    p.print()
+    return data_flow_graph, tree, sort_result
