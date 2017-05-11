@@ -11,7 +11,6 @@ import numpy as np
 from pprint import pprint
 from func_set import FUNCTIONS, FunctionType, select_function, select_lambda
 
-
 MAX_CHILDREN = 2
 MIN_CHILDREN = 1
 
@@ -23,7 +22,6 @@ class NodeType:
 
 
 class Node:
-
     curr_id = 0
 
     def __init__(self, node_type):
@@ -56,7 +54,6 @@ class Node:
 
 
 class Graph:
-
     def __init__(self, vertices, edges):
         self.vertices = vertices
         self.edges = edges
@@ -168,11 +165,49 @@ class Program:
                 lambda_exp = self.graph.get_attr(v, "lambda")
 
                 if not lambda_exp:
-                    string.append(','.join([variable_name, func, ','.join([self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
+                    string.append(','.join([variable_name, func, ','.join(
+                        [self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
                 else:
                     string.append(','.join([variable_name, func, lambda_exp, ','.join(
                         [self.graph.get_attr(v, "variable_name") for v in self.graph.parents(v)])]))
         return '\n'.join(string)
+
+    def inputs(self):
+        """
+        :return:
+        """
+        _inputs = list()
+        for vertex in self.graph.vertices:
+            func = self.graph.get_attr(vertex, "func")
+            if not func:
+                _inputs.append({
+                    "vertex": vertex,
+                    "data_type": self.graph.get_attr(vertex, "data_type"),
+                    "variable_name": self.graph.get_attr(vertex, "variable_name")
+                })
+        return _inputs
+
+    def expressions(self):
+        """
+        Get program expression
+        :return:
+        """
+        exprs = list()
+        for v in self.topological_sort_result:
+            func = self.graph.get_attr(v, "func")
+            variable_name = self.graph.get_attr(v, "variable_name")
+            if func:
+
+                lambda_exp = self.graph.get_attr(v, "lambda")
+
+                if not lambda_exp:
+                    expr = [variable_name, func] + [self.graph.get_attr(v, "variable_name") for v in
+                                                    self.graph.parents(v)]
+                else:
+                    expr = [variable_name, func, lambda_exp] + [self.graph.get_attr(v, "variable_name") for v in
+                                                                self.graph.parents(v)]
+                exprs.append(expr)
+        return exprs
 
     def serialize(self):
         """
@@ -193,7 +228,6 @@ class Program:
 
 
 def topological_sort(graph):
-
     UNMARKED = "UNMMARKED"
     TEMPORAL_MARK = "TEMPORAL_MARK"
     PERMANENT_MARK = "PERMANENT_MARK"
@@ -297,7 +331,7 @@ def generate_data_flow_graph(num_input_node, num_internal_node):
                 num_children = np.random.choice([0, 1], p=[0.5, 0.5])
             else:
                 # 4 functions require 2 arguments, 11 functions require only 1 arguments
-                num_children = np.random.choice([0, 1, 2], p=[1/3, 22/45, 8/45])
+                num_children = np.random.choice([0, 1, 2], p=[1 / 3, 22 / 45, 8 / 45])
 
             selected_nodes = random.sample(candidates, num_children)
 
@@ -353,6 +387,7 @@ def generate_data_flow_graph(num_input_node, num_internal_node):
     # Eliminate unnecessary leaves
     actual_leaves.sort(key=lambda n: n.level)
     for al in actual_leaves:
+        al.node_type = NodeType.INTERNAL_NODE
         candidates = [n for n in nodes if n.level >= al.level and n != al]
         selected_node = random.sample(candidates, 1)[0]
         edges.append((selected_node.id, al.id))
@@ -433,7 +468,7 @@ def add_function(graph):
                 if n_type != data_type:
                     raise Exception("Data Type mismatch")
 
-    # graph.print()
+                    # graph.print()
 
 
 def generate_program(num_input_node, num_internal_node):

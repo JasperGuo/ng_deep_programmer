@@ -3,7 +3,7 @@
 import argparse
 import json
 import os
-from build_graph import generate_program
+from build_graph import generate_program, Program
 
 
 MAX_RETRY = 100
@@ -22,13 +22,14 @@ def main(num_input, length, num, save_path):
     programs = list()
     while curr < num and retry < MAX_RETRY:
         try:
-            p = generate_program(num_input, length)
+            p = generate_program(num_input, length-1)
         except Exception as e:
             print(e)
             retry += 1
             continue
         program_string = p.to_string()
-        if program_string in program_set:
+        expressions = p.expressions()
+        if len(expressions) != length or program_string in program_set:
             retry += 1
         else:
             program_set.add(program_string)
@@ -39,6 +40,14 @@ def main(num_input, length, num, save_path):
     if save_path:
         with open(save_path, "w") as f:
             f.write(json.dumps(programs, indent=4))
+    else:
+        for p_str in programs:
+            program = Program.deserialize(p_str)
+            program.print()
+            print(program.inputs())
+            print(program.expressions())
+            print(program.tree)
+            print("===============================")
 
 
 if __name__ == "__main__":

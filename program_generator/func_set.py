@@ -5,7 +5,6 @@ class DataType:
     INT = "int"
     INT_LIST = "int[]"
     BOOL = "bool"
-    FN_LIST_TO_INT = "int[]->int"
     FN_INT_TO_INT = "int->int"
     FN_INT_TO_BOOL = "int->bool"
     FN_INT_INT_TO_INT = "int->int->int"
@@ -127,7 +126,7 @@ FUNCTIONS = {
     },
     "SCAN1": {
         "func": scan,
-        "arguments": [DataType.FN_LIST_TO_INT, DataType.INT_LIST],
+        "arguments": [DataType.FN_INT_INT_TO_INT, DataType.INT_LIST],
         "return_type": DataType.INT_LIST,
         "func_type": FunctionType.HIGHER_ORDER
     },
@@ -276,22 +275,13 @@ def select_lambda(fn_type):
     candidates = list()
     if fn_type == DataType.FN_INT_INT_TO_INT:
         candidates = ["MAX", "MIN", "(*)", "(-)", "(+)"]
-        return candidates
-
-    if fn_type == DataType.FN_INT_TO_BOOL:
+    elif fn_type == DataType.FN_INT_TO_BOOL:
         for key, value in FUNCTIONS.items():
             if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.BOOL:
                 candidates.append(key)
-        return candidates
-
-    if fn_type == DataType.FN_INT_TO_INT:
+    else:
+        # INT to INT
         for key, value in FUNCTIONS.items():
             if value["func_type"] == FunctionType.LAMBDA and value["return_type"] == DataType.INT:
                 candidates.append(key)
-        return candidates
-
-    # LIST -> INT
-    for key, value in FUNCTIONS.items():
-        if len(value["arguments"]) == 1 and value["arguments"][0] == DataType.INT_LIST and value["return_type"] == DataType.INT:
-            candidates.append(key)
     return candidates
