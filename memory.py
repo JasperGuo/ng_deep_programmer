@@ -8,14 +8,13 @@ class MemoryEntry:
     Memory Entry
     """
 
-    def __init__(self, name, value, data_type, opt, src1=None, src2=None, src3=None, src4=None):
+    def __init__(self, name, value, data_type, opt, src1=None, src2=None, src3=None):
         self._name = name
         self._value = value
         self._type = data_type
         self._src1 = src1
         self._src2 = src2
         self._src3 = src3
-        self._src4 = src4
         self._operation = opt
 
     @property
@@ -39,6 +38,17 @@ class MemoryEntry:
 
     def __repr__(self):
         return self.__str__()
+
+    def serialize(self):
+        return {
+            "variable_name": self._name,
+            "value": self._value,
+            "data_type": self._type,
+            "src1": self._src1.name if self._src1 else None,
+            "src2": self._src2.name if self._src2 else None,
+            "src3": self._src3.name if self._src3 else None,
+            "opt": self._operation
+        }
 
 
 class Memory:
@@ -66,3 +76,9 @@ class Memory:
 
     def __repr__(self):
         return self.__str__()
+
+    def serialize(self):
+        result = list()
+        for memory_entry in self._memory_list:
+            result.append(memory_entry.serialize())
+        return result

@@ -138,6 +138,10 @@ class Program:
                 func_set.add(lambda_exp)
         return func_set
 
+    @property
+    def length(self):
+        return len(self.expressions())
+
     def serialize(self):
         """
         Serialize Program Instance to json

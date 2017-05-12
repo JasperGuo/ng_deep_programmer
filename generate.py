@@ -1,8 +1,9 @@
 # coding=utf8
 
-import argparse
+import os
 import json
 import random
+import argparse
 import program_settings as ps
 import interpreter
 from program_generator.func_set import DataType
@@ -45,15 +46,22 @@ def generate_program_input(program):
     return inputs
 
 
-def main(num_input, length, num, save_path):
+def main(num_input, length, num, existing_program_set, save_path):
     """
+    :param existing_program_set:
     :param num_input: Number of input nodes
     :param length:    Length of the program
     :param num:       Number of programs
     :param save_path:
     :return:
     """
-    program_set = set()
+
+    if existing_program_set:
+        with open(existing_program_set, "r") as f:
+            program_set = json.load(f)
+            program_set = set(program_set)
+    else:
+        program_set = set()
     curr = 0
     retry = 0
     programs = list()
@@ -74,7 +82,7 @@ def main(num_input, length, num, save_path):
 
             # Check Redundant funcs
             if not check_redundant(p):
-                print("Redundant")
+                # print("Redundant")
                 retry += 1
                 continue
 
@@ -110,7 +118,15 @@ def main(num_input, length, num, save_path):
     if save_path:
         print("Num: %d" % len(programs))
         with open(save_path, "w") as f:
-            f.write(json.dumps(programs, indent=4))
+            f.write(json.dumps(programs))
+
+        _, file = os.path.split(save_path)
+        filename, ext = os.path.splitext(file)
+        new_filename = filename + "_program_str"
+        program_str_path = os.path.join(_, new_filename + ext)
+        with open(program_str_path, "w") as f:
+            f.write(json.dumps(list(program_set)))
+
     else:
         print("Done: ")
         for p_str in programs:
@@ -130,6 +146,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--length", help="Length of program", required=True)
     arg_parser.add_argument("--num", help="Number of program", required=True)
     arg_parser.add_argument("--save", help="Save path", required=False)
+    arg_parser.add_argument("--programs", help="Existing program set", required=False)
 
     args = arg_parser.parse_args()
-    main(int(args.input), int(args.length), int(args.num), args.save)
+    main(int(args.input), int(args.length), int(args.num), args.programs, args.save)
