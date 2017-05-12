@@ -8,6 +8,7 @@ import interpreter
 from program_generator.func_set import DataType
 from program_generator.build_graph import generate_program
 from program import Program, TestCase
+from tools.remove_meaningless_program import check as check_redundant
 
 
 TEST_CASE_MAX_RETRY = 100
@@ -70,6 +71,13 @@ def main(num_input, length, num, save_path):
         if len(expressions) != length or program_string in program_set:
             retry += 1
         else:
+
+            # Check Redundant funcs
+            if not check_redundant(p):
+                print("Redundant")
+                retry += 1
+                continue
+
             output_vertex = p.output()
             for i in range(TEST_CASE_NUM):
                 v = 0
