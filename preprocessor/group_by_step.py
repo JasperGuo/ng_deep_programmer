@@ -26,7 +26,7 @@ def process(program):
 
     program_length = program.length
     program_trace = {str(n): [] for n in range(program_length+1)}
-    for tid, test_case in enumerate(program.test_cases[9:]):
+    for tid, test_case in enumerate(program.test_cases):
         memory = Memory()
         inputs = test_case.inputs
         for i in inputs:
