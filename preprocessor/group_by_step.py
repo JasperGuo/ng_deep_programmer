@@ -7,6 +7,7 @@ import re
 import os
 import uuid
 import json
+import random
 import argparse
 import interpreter
 from program import Program
@@ -17,7 +18,7 @@ MAX_LENGTH = 10
 PROGRAM_FILENAME_PATTERN = re.compile(r'(\d+)_input.json')
 
 
-def process(program):
+def process(program, test_case_num):
 
     pid = str(uuid.uuid1())
 
@@ -26,7 +27,8 @@ def process(program):
 
     program_length = program.length
     program_trace = {str(n): [] for n in range(program_length+1)}
-    for tid, test_case in enumerate(program.test_cases):
+    sampled_test_cases = random.sample(program.test_cases, test_case_num)
+    for tid, test_case in enumerate(sampled_test_cases):
         memory = Memory()
         inputs = test_case.inputs
         for i in inputs:
@@ -73,7 +75,7 @@ def process(program):
     return result
 
 
-def main(directory, save_path, save_base_name):
+def main(directory, save_path, save_base_name, cases_num=5):
 
     traces = {str(n): [] for n in range(MAX_LENGTH + 1)}
     for file in os.listdir(directory):
@@ -85,7 +87,7 @@ def main(directory, save_path, save_base_name):
             programs = json.load(f)
 
         for program in programs:
-            p_trace = process(program)
+            p_trace = process(program, cases_num)
             for key, value in p_trace.items():
                 traces[key].append(value)
 
@@ -104,7 +106,8 @@ if __name__ == "__main__":
     args_parser.add_argument("--directory", help="Program file directory", required=True)
     args_parser.add_argument("--save", help="Save base path", required=True)
     args_parser.add_argument("--basename", help="Save base path", required=True)
+    args_parser.add_argument("--cases", help="Number of test cases", required=True)
 
     args = args_parser.parse_args()
 
-    main(args.directory, args.save, args.basename)
+    main(args.directory, args.save, args.basename, int(args.cases))

@@ -29,7 +29,7 @@ def process(step_file):
             memory = test_case_run_detail["memory"]
             formatted_memory = list()
             for memory_entry in memory:
-                for src in ["src1", "src2", "src3"]:
+                for src in ["src1", "src2"]:
                     if memory_entry[src]:
                         idx = index(formatted_memory, memory_entry[src])
                         if idx is None:
@@ -42,7 +42,13 @@ def process(step_file):
                 if arg in list(FUNCTIONS.keys()):
                     args[idx] = (arg, "FUNCTION")
                 else:
-                    args[idx] = (arg, "VAR")
+
+                    memory_index = index(formatted_memory, arg)
+
+                    if memory_index is None:
+                        raise Exception("Invalid Memory")
+
+                    args[idx] = (memory_index, "VAR")
 
             program_dict["detail"].append({
                 "memory": formatted_memory,

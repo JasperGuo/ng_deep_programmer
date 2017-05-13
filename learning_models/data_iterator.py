@@ -60,7 +60,7 @@ class DataIterator:
         else:
             value = [self._digit_vocab.word2id(memory_entry["value"])] + [VocabManager.PAD_TOKEN_ID] * (self._max_value_length - 1)
 
-        for src in ["src1", "src2", "src3"]:
+        for src in ["src1", "src2"]:
             if memory_entry[src]:
                 memory_entry[src] += 1
             else:
@@ -73,7 +73,6 @@ class DataIterator:
             "value": value,
             "src1": memory_entry["src1"],
             "src2": memory_entry["src2"],
-            "src3": memory_entry["src3"],
             "data_type": data_type,
             "opt": opt
         }
@@ -110,6 +109,12 @@ class DataIterator:
                     "output_data_type": processed_output["data_type"]
                 })
             func = self._operation_vocab.word2id(detail[0]["func"])
+
+            """
+            Argument Selector:
+                Select variable from memory or lambda expression from lambda vocabs
+            """
+
             new_data.append({
                 "detail": formatted_detail,
                 "args": detail[0]["args"],

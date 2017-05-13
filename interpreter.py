@@ -39,7 +39,8 @@ def interpret(memory, expression):
                 name=return_value,
                 src1=argument,
                 opt=func_name,
-                data_type=func_def["return_type"]
+                data_type=func_def["return_type"],
+                lambda_expr=expression[2]
             )
         else:
             argument1 = memory.read(expression[2])
@@ -54,33 +55,19 @@ def interpret(memory, expression):
                 data_type=func_def["return_type"]
             )
     else:
-        if func_type == FunctionType.HIGHER_ORDER:
-            lambda_expr = FUNCTIONS[expression[2]]["func"]
-            argument1 = memory.read(expression[3])
-            argument2 = memory.read(expression[4])
-            result = func(lambda_expr, argument1.value, argument2.value)
-            memory_entry = MemoryEntry(
-                value=result,
-                name=return_value,
-                src1=argument1,
-                src2=argument2,
-                opt=func_name,
-                data_type=func_def["return_type"]
-            )
-        else:
-            argument1 = memory.read(expression[2])
-            argument2 = memory.read(expression[3])
-            argument3 = memory.read(expression[4])
-            result = func(argument1.value, argument2.value, argument3.value)
-            memory_entry = MemoryEntry(
-                value=result,
-                name=return_value,
-                src1=argument1,
-                src2=argument2,
-                src3=argument3,
-                opt=func_name,
-                data_type=func_def["return_type"]
-            )
+        lambda_expr = FUNCTIONS[expression[2]]["func"]
+        argument1 = memory.read(expression[3])
+        argument2 = memory.read(expression[4])
+        result = func(lambda_expr, argument1.value, argument2.value)
+        memory_entry = MemoryEntry(
+            value=result,
+            name=return_value,
+            src1=argument1,
+            src2=argument2,
+            opt=func_name,
+            data_type=func_def["return_type"],
+            lambda_expr=expression[2]
+        )
 
     if memory_entry.value is None:
         raise Exception("Output is None")
