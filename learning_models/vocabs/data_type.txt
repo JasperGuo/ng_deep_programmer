@@ -1,2 +1,2 @@
-INT
-INT[]
+int
+int[]

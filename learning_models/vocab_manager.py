@@ -11,8 +11,7 @@ class VocabManager:
     PAD_TOKEN = "<P>"
     PAD_TOKEN_ID = 0
 
-    @staticmethod
-    def _read(vocab_path):
+    def _read(self, vocab_path):
         data = list()
         with open(vocab_path, "r") as f:
             for line in f:
@@ -31,6 +30,9 @@ class VocabManager:
             self._vocab_word2id[word] = _id
             _id += 1
 
+        self._vocab_id2word[self.PAD_TOKEN_ID] = self.PAD_TOKEN
+        self._vocab_word2id[self.PAD_TOKEN] = self.PAD_TOKEN_ID
+
     @property
     def vocab(self):
         return self._vocab
@@ -40,7 +42,7 @@ class VocabManager:
         return len(self._vocab)
 
     def word2id(self, word):
-        return util.get_value(self._vocab_word2id, word)
+        return util.get_value(self._vocab_word2id, str(word))
 
     def id2word(self, wid):
         return util.get_value(self._vocab_id2word, wid)
