@@ -113,6 +113,7 @@ def main(num_input, length, num, existing_program_set, save_path):
                 programs.append(p.serialize())
                 retry = 0
                 curr += 1
+                continue
             retry += 1
 
     if save_path:

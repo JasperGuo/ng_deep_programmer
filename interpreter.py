@@ -1,5 +1,6 @@
 # coding=utf8
 
+import math
 from program_generator.func_set import FUNCTIONS, FunctionType, DataType
 from memory import MemoryEntry, Memory
 import program_settings as ps
@@ -71,6 +72,15 @@ def interpret(memory, expression):
 
     if memory_entry.value is None:
         raise Exception("Output is None")
+
+    # Ensure INT
+    if isinstance(memory_entry.value, list):
+        val = list()
+        for v in memory_entry.value:
+            val.append(math.floor(v))
+        memory_entry.value = val
+    else:
+        memory_entry.value = math.floor(memory_entry.value)
 
     # Check value
     if memory_entry.type == DataType.INT:

@@ -21,6 +21,10 @@ class MemoryEntry:
     def value(self):
         return self._value
 
+    @value.setter
+    def value(self, val):
+        self._value = val
+
     @property
     def type(self):
         return self._type
