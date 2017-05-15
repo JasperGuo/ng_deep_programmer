@@ -180,7 +180,7 @@ class DataIterator:
         processed_args = list()
         for arg in args:
             if not arg:
-                arg_id = 0
+                arg_id = self._max_memory_size + self._lambda_vocab.vocab_len + 1
             else:
                 if arg[1] == "FUNCTION":
                     # lambda
