@@ -174,7 +174,8 @@ class BasicModel:
             )
             begin_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [1, self._lambda_embedding_dim]
+                    [1, self._lambda_embedding_dim],
+                    stddev=0.5
                 ),
                 name="argument_begin_embedding",
                 dtype=tf.float32,
@@ -183,6 +184,7 @@ class BasicModel:
             end_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
                     [1, self._lambda_embedding_dim],
+                    stddev=0.5
                 ),
                 name="argument_end_embedding",
                 dtype=tf.float32,
@@ -656,10 +658,10 @@ class BasicModel:
             [batch_size, (argument_candidate_num), lambda_embedding]
         """
 
-        # Shape: [lambda_vocab_len+3, lambda_embedding]
+        # Shape: [lambda_vocab_len+3, lambda_embedding_dim]
         _lambda_embedding = tf.concat([lambda_embedding, auxiliary_embedding], axis=0)
 
-        # Shape: [batch_size, lambda_vocab_len+3, lambda_embedding]
+        # Shape: [batch_size, lambda_vocab_len+3, lambda_embedding_dim]
         expanded_embedding = tf.tile(
             tf.expand_dims(
                 _lambda_embedding,

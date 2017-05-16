@@ -146,7 +146,7 @@ class ModelRuntime:
     def test(self, data_iterator, is_log=False):
         tqdm.write("Testing...")
         total = 0
-        exact_match = 0
+        correct = 0
         for i in tqdm(range(data_iterator.batch_per_epoch)):
             batch = data_iterator.get_batch()
             operations, arguments, feed_dict = self._test_model.predict(batch)
@@ -154,9 +154,16 @@ class ModelRuntime:
                 operations, arguments
             ), feed_dict=feed_dict)
 
+            correct += self._calc_batch_accuracy(
+                operation_predictions=operations,
+                argument_predictions=arguments,
+                truth_operations=batch.operation,
+                truth_arguments=batch.argument_targets
+            )
+
             total += batch.batch_size
 
-        accuracy = exact_match/total
+        accuracy = correct/total
         return accuracy
 
     def train(self):

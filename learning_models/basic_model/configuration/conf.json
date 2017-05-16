@@ -1,6 +1,6 @@
 {
   "name": "ng_deep_programmer_basic_model",
-  "default_learning_rate": 0.00001,
+  "default_learning_rate": 0.001,
   "learning_rate_decay_factor": 0.98,
   "learning_rate_decay_interval": 15,
   "optimizer": "AdamOptimizer",
