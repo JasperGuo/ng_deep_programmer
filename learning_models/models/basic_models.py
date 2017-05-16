@@ -2,7 +2,6 @@
 
 from .. import util
 from . import models_util
-import numpy as np
 import tensorflow as tf
 
 
@@ -67,7 +66,7 @@ class BasicModel:
         self._argument_rnn_layers = util.get_value(opts, "argument_rnn_layers")
 
         # Argument Target Vocab size
-        self._argument_candidate_num = self._lambda_vocab_manager.vocab_len + self._max_memory_size + 2
+        self._argument_candidate_num = self._lambda_vocab_manager.vocab_len + self._max_memory_size + 3
 
         self._gradient_clip = util.get_value(opts, "gradient_clip", 5)
 
@@ -156,17 +155,26 @@ class BasicModel:
             lambda_embedding = tf.concat(pad_embedding, lambda_embedding)
 
         with tf.variable_scope("auxiliary_argument_embedding"):
-            nop_embedding = tf.get_variable(
+            pad_embedding = tf.get_variable(
                 initializer=tf.zeros([1, self._lambda_embedding_dim]),
-                name="argument_nop_embedding",
+                name="argument_pad_embedding",
                 trainable=False
             )
             begin_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._lambda_embedding_dim]),
+                initializer=tf.truncated_normal(
+                    [1, self._lambda_embedding_dim]
+                ),
                 name="argument_begin_embedding",
                 trainable=True
             )
-            auxiliary_argument_embedding = tf.concat([begin_embedding, nop_embedding])
+            end_embedding = tf.get_variable(
+                initializer=tf.truncated_normal(
+                    [1, self._lambda_embedding_dim],
+                ),
+                name="argument_end_embedding",
+                trainable=True
+            )
+            auxiliary_argument_embedding = tf.concat([pad_embedding, end_embedding, begin_embedding], axis=0)
 
         return data_type_embedding, operation_embedding, digit_embedding, lambda_embedding, auxiliary_argument_embedding
 

@@ -47,8 +47,13 @@ class Batch:
         self.output_data_type = output_data_type
         self.output_value = output_value
         self.operation = operation
-        self.argument_inputs = args[:len(args)-1]
-        self.argument_targets = args[1::]
+
+        self.argument_inputs = list()
+        self.argument_targets = list()
+        for arg in args:
+            self.argument_inputs.append(arg[:len(arg)-1])
+            self.argument_targets.append(arg[1::])
+
         self._learning_rate = 0.0
 
     @property
@@ -82,6 +87,14 @@ class Batch:
         print(self.memory_entry_src2)
         print("Memory Entry Lambda: ")
         print(self.memory_entry_lambda)
+        print("Operation: ")
+        print(self.operation)
+        print("Argument inputs: ")
+        print(self.argument_inputs)
+        print("Argument targets: ")
+        print(self.argument_targets)
+        print("Learning rate: ")
+        print(self.learning_rate)
 
 
 class DataIterator:
@@ -92,6 +105,7 @@ class DataIterator:
                  lambda_vocab,
                  operation_vocab,
                  batch_size,
+                 max_argument_num=4,
                  max_memory_size=10,
                  max_value_length=20,
                  case_num=2
@@ -103,6 +117,7 @@ class DataIterator:
         :param lambda_vocab:        VocabManager Instance
         :param operation_vocab:     VocabManager Instance
         :param batch_size:
+        :param max_argument_num
         :param max_memory_size:
         :param max_value_length:
         :param case_num:
@@ -113,6 +128,7 @@ class DataIterator:
         self._operation_vocab = operation_vocab
         self._lambda_vocab = lambda_vocab
         self._case_num = case_num
+        self._max_argument_num = max_argument_num
         self._max_value_length = max_value_length
         self._max_memory_size = max_memory_size
         self._batch_size = batch_size
@@ -193,17 +209,33 @@ class DataIterator:
         }
 
     def _process_args(self, args):
-        processed_args = list()
+
+        # Argument Begin Word id
+        BEGIN_ID = self._max_memory_size+self._lambda_vocab.vocab_len + 2
+
+        # Argument END Word id
+        END_ID = self._max_memory_size+self._lambda_vocab.vocab_len + 1
+
+        # Argument PAD Word id
+        PAD_ID = self._max_memory_size+self._lambda_vocab.vocab_len
+
+        processed_args = [BEGIN_ID]
         for arg in args:
             if not arg:
-                arg_id = self._max_memory_size + self._lambda_vocab.vocab_len + 1
+                break
             else:
                 if arg[1] == "FUNCTION":
                     # lambda
                     arg_id = self._max_memory_size + self._lambda_vocab.word2id(arg[0])
                 else:
-                    arg_id = arg[0] + 1
-            processed_args.append(arg_id)
+                    arg_id = arg[0]
+                processed_args.append(arg_id)
+
+        i = len(processed_args)
+        while i < self._max_argument_num:
+            processed_args.append(PAD_ID)
+            i += 1
+        processed_args.append(END_ID)
         return processed_args
 
     def _read_data(self, data_path):
