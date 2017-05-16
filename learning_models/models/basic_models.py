@@ -7,7 +7,6 @@ import tensorflow as tf
 
 
 class BasicModel:
-
     epsilon = 1e-5
 
     def __init__(
@@ -41,6 +40,8 @@ class BasicModel:
 
         self._batch_with_case_and_memory_size = self._batch_with_case_size * self._max_memory_size
 
+        self._dropout = util.get_value(opts, "dropout", 0.25)
+
         # Embedding Size
         self._data_type_embedding_dim = util.get_value(opts, "data_type_embedding_dim")
         self._operation_embedding_dim = util.get_value(opts, "operation_embedding_dim")
@@ -72,18 +73,25 @@ class BasicModel:
 
     def _build_input_nodes(self):
         with tf.name_scope("model_placeholder"):
-            self._memory_entry_data_type = tf.placeholder(tf.int32, [self._batch_with_case_and_memory_size], name="memory_entry_data_type")
-            self._memory_entry_value = tf.placeholder(tf.int32, [self._batch_with_case_and_memory_size, self._max_value_size], name="memory_entry_value")
+            self._memory_entry_data_type = tf.placeholder(tf.int32, [self._batch_with_case_and_memory_size],
+                                                          name="memory_entry_data_type")
+            self._memory_entry_value = tf.placeholder(tf.int32,
+                                                      [self._batch_with_case_and_memory_size, self._max_value_size],
+                                                      name="memory_entry_value")
             self._memory_size = tf.placeholder(tf.int32, [self._batch_with_case_size], name="memory_size")
             self._output_data_type = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_data_type")
-            self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size], name="output_value")
+            self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size],
+                                                name="output_value")
 
             self._rnn_output_keep_prob = tf.placeholder(tf.float32, name="output_keep_prob")
             self._rnn_input_keep_prob = tf.placeholder(tf.float32, name="input_keep_prob")
 
             if not self._is_test:
                 self._operation = tf.placeholder(tf.int32, [self._batch_size], name="operation")
-                self._arguments = tf.placeholder(tf.int32, [self._batch_size, self._max_argument_num], name="arguments")
+                # <S>-arg0-arg1-arg2
+                self._argument_inputs = tf.placeholder(tf.int32, [self._batch_size, self._max_argument_num], name="argument_inputs")
+                # arg0-arg1-arg3-</S>
+                self._argument_targets = tf.placeholder(tf.int32, [self._batch_size, self._max_argument_num], name="argument")
                 self._learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
     def _build_embedding_layer(self):
@@ -166,7 +174,8 @@ class BasicModel:
         with tf.variable_scope("memory_encoder"):
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._data_type_embedding_dim + self._digit_embedding_dim * self._max_value_size, self._memory_encoder_layer_1_dim],
+                shape=[self._data_type_embedding_dim + self._digit_embedding_dim * self._max_value_size,
+                       self._memory_encoder_layer_1_dim],
                 name="weights_1"
             )
             layer_1_bias = tf.get_variable(
@@ -250,7 +259,8 @@ class BasicModel:
         # Shape: [batch_size*case_num*max_memory_size, max_value_size*digit_embedding+data_type_embedding_dim]
         concatenated_memory_entry_embedded = tf.concat(
             (
-                tf.reshape(value_embedded, shape=[self._batch_with_case_and_memory_size, self._max_value_size*self._digit_embedding_dim]),
+                tf.reshape(value_embedded, shape=[self._batch_with_case_and_memory_size,
+                                                  self._max_value_size * self._digit_embedding_dim]),
                 data_type_embedded
             ),
             axis=1
@@ -278,7 +288,8 @@ class BasicModel:
         # Shape: [batch_size*case_num, max_value_size*data_type_embedding_dim]
         concatenated_output_embedded = tf.concat(
             (
-                tf.reshape(value_embedded, shape=[self._batch_with_case_size, self._max_value_size*self._digit_embedding_dim]),
+                tf.reshape(value_embedded,
+                           shape=[self._batch_with_case_size, self._max_value_size * self._digit_embedding_dim]),
                 data_type_embedded
             ),
             axis=1
@@ -317,7 +328,8 @@ class BasicModel:
 
             return weights, bias, score_weights
 
-    def _calc_memory_output_attention(self, activate_weights, activate_bias, score_weights, encoded_memory, encoded_output, memory_size):
+    def _calc_memory_output_attention(self, activate_weights, activate_bias, score_weights, encoded_memory,
+                                      encoded_output, memory_size):
         """
         Calculate Memory, Output Attention
         :param activate_weights:    [memory_encoder_layer_2_dim, memory_encoder_layer_2_dim]
@@ -416,7 +428,8 @@ class BasicModel:
             )
             return attentive_context_weights, output_weights, bias
 
-    def _calc_guide_vector(self, guide_context_weights, guide_output_weights, guide_bias, context_vector, encoded_output):
+    def _calc_guide_vector(self, guide_context_weights, guide_output_weights, guide_bias, context_vector,
+                           encoded_output):
         """
             RELU(W1*context_vector + W2*encoded_output + bias)
         :param guide_context_weights:   [guide_hidden_dim, memory_encoder_layer_2_dim]
@@ -511,7 +524,8 @@ class BasicModel:
                 axis=2
             )
 
-            output_layer = tf.add(tf.matmul(max_pooling_result, selector_weights["output_W"]), selector_biases["output_b"])
+            output_layer = tf.add(tf.matmul(max_pooling_result, selector_weights["output_W"]),
+                                  selector_biases["output_b"])
 
             softmax_output = tf.nn.softmax(output_layer)
             selection = tf.arg_max(softmax_output, dimension=1)
@@ -635,9 +649,9 @@ class BasicModel:
         """
         Look up argument_embedding
         :param argument_embedding:  [batch_size, (argument_candidate_num), lambda_embedding_dim]
-        :param arguments:           [batch_size, max_argument_num]
+        :param arguments:           [batch_size, None]
         :return:
-            [batch_size, max_argument_num, lambda_embedding_dim]
+            [batch_size, None, lambda_embedding_dim]
         """
         # [batch_size]
         indices_template = tf.range(self._batch_size) * self._argument_candidate_num
@@ -652,7 +666,7 @@ class BasicModel:
         argument_embedded = tf.nn.embedding_lookup(
             tf.reshape(
                 argument_embedding,
-                shape=[self._batch_size*self._argument_candidate_num, self._lambda_embedding_dim]
+                shape=[self._batch_size * self._argument_candidate_num, self._lambda_embedding_dim]
             ),
             indices
         )
@@ -673,12 +687,14 @@ class BasicModel:
         Select arguments in training process
         :param argument_cell:       LSTMCell
         :param guide_vector:        [batch_size*case_num, guide_hidden_dim]
-        :param selected_operation:  [batch_size, guide_hidden_dim]
+        :param selected_operation:  [batch_size, operation_selector_dim]
         :param argument_embedding:  [batch_size, (argument_candidate_num), lambda_embedding_dim]
         :param arguments:           [batch_size, max_argument_num]:
-        :param max_pooling_weights: [argument_selector_hidden_dim],
-        :softmax_weights:           []
+        :param max_pooling_weights: [argument_selector_hidden_dim, argument_selector_hidden_dim],
+        :param softmax_weights:           []
+        :param softmax_bias:
         :return:
+            [batch_size, max_argument_num]
         """
         assert not self._is_test
         # [batch_size, max_argument_num, lambda_embedding]
@@ -700,7 +716,7 @@ class BasicModel:
         replicated_operation_embedded = tf.reshape(
             tf.tile(
                 selected_operation,
-                [1, self._case_num*self._max_argument_num]
+                [1, self._case_num * self._max_argument_num]
             ),
             shape=[self._batch_with_case_size, self._max_argument_num, self._operation_embedding_dim]
         )
@@ -714,7 +730,7 @@ class BasicModel:
             shape=[self._batch_with_case_size, self._max_argument_num, self._guide_hidden_dim]
         )
 
-        # Shape: [batch_size*case_num, max_argument_num, lambda_embedding_dim]
+        # Shape: [batch_size*case_num, max_argument_num, guide_hidden_dim+operation_selector_dim+lambda_embedding_dim]
         inputs = tf.concat(
             [
                 replicated_guide_vector,
@@ -737,7 +753,7 @@ class BasicModel:
             tf.matmul(
                 tf.reshape(
                     argument_outputs,
-                    shape=[self._batch_with_case_size*self._max_argument_num, self._argument_selector_dim]
+                    shape=[self._batch_with_case_size * self._max_argument_num, self._argument_selector_dim]
                 ),
                 max_pooling_weights,
             )
@@ -762,7 +778,8 @@ class BasicModel:
                 tf.add(
                     tf.matmul(
                         tf.reshape(
-                            max_pooling_results, shape=[self._batch_size*self._max_argument_num, self._argument_selector_dim]
+                            max_pooling_results,
+                            shape=[self._batch_size * self._max_argument_num, self._argument_selector_dim]
                         ),
                         softmax_weights,
                     ),
@@ -777,7 +794,182 @@ class BasicModel:
 
         return softmax_outputs, predictions
 
+    def _select_arguments_in_testing(
+            self,
+            argument_cell,
+            guide_vector,
+            selected_operation,
+            argument_embedding,
+            max_pooling_weights,
+            softmax_weights,
+            softmax_bias
+    ):
+        """
+        Select arguments in testing process
+        :param argument_cell:              LSTMCell
+        :param guide_vector:               [batch_size*case_num, guide_hidden_dim]
+        :param selected_operation:         [batch_size, operation_selector_dim]
+        :param argument_embedding:         [batch_size, (argument_candidate_num), lambda_embedding_dim]
+        :param max_pooling_weights:        [argument_selector_hidden_dim, argument_selector_hidden_dim]
+        :param softmax_weights:            [argument_selector_dim, argument_candidate_num]
+        :param softmax_bias:               [argument_candidate_num]
+        :return:
+        """
+        assert self._is_test
+
+        # Replicate operation embedding
+        # Shape: [batch_size*case_num, 1, operation_embedding_dim]
+        replicated_operation_embedded = tf.reshape(
+            tf.tile(
+                selected_operation,
+                [1, self._case_num]
+            ),
+            shape=[self._batch_with_case_size, 1, self._operation_embedding_dim]
+        )
+
+        # Shape: [batch_size*case_num, 1, guide_hidden_dim]
+        reshaped_guide_vector = tf.reshape(
+            guide_vector,
+            shape=[self._batch_with_case_size, 1, self._guide_hidden_dim]
+        )
+
+        # Shape: [batch_size, 1]
+        first_input_index = tf.reshape(
+            tf.constant([self._argument_candidate_num - 1] * self._batch_size),
+            shape=[self._batch_size, 1]
+        )
+
+        # Initialize an zeros states
+        initial_state = tf.zeros([self._argument_rnn_layers, 2, self._batch_size, self._argument_selector_dim])
+        l = tf.unstack(initial_state, axis=0)
+        rnn_state_tuple = tuple(
+            [tf.contrib.rnn.LSTMStateTuple(l[idx][0], l[idx][1])
+             for idx in range(self._argument_rnn_layers)]
+        )
+
+        with tf.name_scope("select_arguments"):
+            def __cond(_curr_ts, _inputs, rnn_states, prediction_array):
+                return tf.less(_curr_ts, self._max_argument_num)
+
+            def __loop_body(_curr_ts, _inputs, rnn_states, prediction_array):
+                """
+                :param _curr_ts:            Scalar
+                :param _inputs:             [batch_size, 1]
+                :param rnn_states:          LSTMStateTuple
+                :param prediction_array:    TensorArray
+                :return:
+                """
+                # [batch_size, 1, lambda_embedding_dim]
+                _input_embedding = self._look_up_argument_embedding(
+                    argument_embedding=argument_embedding,
+                    arguments=_inputs
+                )
+
+                # Replicate input embedding
+                # Shape: [batch_size*case_num, 1, lambda_embedding_dim]
+                replicated_input_embedding = tf.reshape(
+                    tf.tile(
+                        _input_embedding,
+                        [1, self._case_num, 1]
+                    ),
+                    shape=[self._batch_with_case_size, 1, self._lambda_embedding_dim]
+                )
+
+                # Shape: [batch_size*case_num, 1, guide_hidden_dim+operation_selector_dim+lambda_embedding_dim]
+                concatenated_input_embedding = tf.concat(
+                    [
+                        reshaped_guide_vector,
+                        replicated_operation_embedded,
+                        replicated_input_embedding
+                    ],
+                    axis=2
+                )
+                # Shape: [batch_size*case_num, 1, argument_selector_dim]
+                _argument_rnn_outputs, _argument_rnn_states = tf.nn.dynamic_rnn(
+                    cell=argument_cell,
+                    inputs=concatenated_input_embedding,
+                    dtype=tf.float32
+                )
+
+                # Shape: [batch_size*case_num, argument_selector_dim]
+                _weighted_argument_outputs = tf.tanh(
+                    tf.matmul(
+                        tf.reshape(
+                            _argument_rnn_outputs,
+                            shape=[self._batch_with_case_size * 1, self._argument_selector_dim]
+                        ),
+                        max_pooling_weights,
+                    )
+                )
+
+                # Shape: [batch_size, argument_selector_dim]
+                _max_pooling_results = tf.reduce_max(
+                    # Shape: [batch_size, argument_selector_dim, case_num]
+                    tf.transpose(
+                        tf.reshape(
+                            _weighted_argument_outputs,
+                            shape=[self._batch_size, self._case_num, self._argument_selector_dim]
+                        ),
+                        perm=[0, 2, 1]
+                    ),
+                    axis=2
+                )
+
+                # Shape: [batch_size, argument_candidate_num]
+                softmax_outputs = tf.nn.softmax(
+                    tf.reshape(
+                        tf.add(
+                            tf.matmul(
+                                tf.reshape(
+                                    _max_pooling_results,
+                                    shape=[self._batch_size, self._argument_selector_dim]
+                                ),
+                                softmax_weights,
+                            ),
+                            softmax_bias
+                        ),
+                        shape=[self._batch_size, self._argument_candidate_num]
+                    ),
+                    dim=1
+                )
+
+                # Shape: [batch_size, 1]
+                curr_prediction = tf.reshape(
+                    tf.cast(tf.arg_max(softmax_outputs, dimension=1), dtype=tf.int32),
+                    shape=[self._batch_size, 1]
+                )
+                prediction_array = prediction_array.write(
+                    _curr_ts,
+                    tf.reshape(
+                        curr_prediction,
+                        shape=[self._batch_size]
+                    ),
+                )
+
+                next_ts = tf.add(_curr_ts, 1)
+
+                return next_ts, curr_prediction, _argument_rnn_states, prediction_array
+
+            total_ts, last_prediction, rnn_states, predictions, = tf.while_loop(
+                body=__loop_body,
+                cond=__cond,
+                loop_vars=[
+                    tf.constant(0),
+                    first_input_index,
+                    rnn_state_tuple,
+                    tf.TensorArray(dtype=tf.int32, size=self._max_argument_num)
+                ]
+            )
+
+            return tf.transpose(
+                predictions.stack(name="argument_predictions")
+            )
+
     def _build_train_graph(self):
+        """
+        Build Training Graph
+        :return:
+        """
         self._build_input_nodes()
 
         data_type_embedding, operation_embedding, digit_embedding, lambda_embedding, auxiliary_argument_embedding = self._build_embedding_layer()
@@ -791,8 +983,10 @@ class BasicModel:
         output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
-        encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases, memory_entry_data_type_embedded, memory_entry_value_embedded)
-        encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded, output_value_embedded)
+        encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
+                                             memory_entry_data_type_embedded, memory_entry_value_embedded)
+        encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
+                                             output_value_embedded)
 
         # Guide
         attention_weights, attention_bias, attention_score_weights = self._build_memory_output_attention_layer()
@@ -860,7 +1054,7 @@ class BasicModel:
             guide_vector=guide_vector,
             selected_operation=embedd_operation,
             argument_embedding=argument_embedding,
-            arguments=self._arguments,
+            arguments=self._argument_inputs,
             max_pooling_weights=max_pooling_weights,
             softmax_weights=argument_softmax_weights,
             softmax_bias=argument_softmax_bias
@@ -869,8 +1063,10 @@ class BasicModel:
         # Prevent inf
         argument_outputs = tf.add(argument_outputs, tf.constant(self.epsilon, dtype=tf.float32))
 
-        with tf.name_scope("loss"):
+        self._operation_prediction = selected_operations
+        self._argument_prediction = argument_predictions
 
+        with tf.name_scope("loss"):
             #############################################################################
             # Operation Probs
             # Calculate Operation Index
@@ -910,7 +1106,7 @@ class BasicModel:
             truth_argument_indices = tf.concat(
                 [
                     stacked_prefix,
-                    tf.reshape(self._arguments, shape=[self._batch_size, self._max_argument_num, 1])
+                    tf.reshape(self._argument_targets, shape=[self._batch_size, self._max_argument_num, 1])
                 ],
                 axis=2
             )
@@ -939,8 +1135,135 @@ class BasicModel:
 
             # clipped at 5 to alleviate the exploding gradient problem
             self._gvs = optimizer.compute_gradients(self._loss)
-            self._capped_gvs = [(tf.clip_by_value(grad, -self._gradient_clip, self._gradient_clip), var) for grad, var in self._gvs]
+            self._capped_gvs = [(tf.clip_by_value(grad, -self._gradient_clip, self._gradient_clip), var) for grad, var
+                                in self._gvs]
             self._optimizer = optimizer.apply_gradients(self._capped_gvs)
 
     def _build_test_graph(self):
-        pass
+        """
+        Build Test Graph
+        :return:
+        """
+        self._build_input_nodes()
+
+        data_type_embedding, operation_embedding, digit_embedding, lambda_embedding, auxiliary_argument_embedding = self._build_embedding_layer()
+
+        memory_entry_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._memory_entry_data_type)
+        memory_entry_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._memory_entry_value)
+        output_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._output_data_type)
+        output_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._output_value)
+
+        memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
+        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+
+        # Encode Memory and Output
+        encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
+                                             memory_entry_data_type_embedded, memory_entry_value_embedded)
+        encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
+                                             output_value_embedded)
+
+        # Guide
+        attention_weights, attention_bias, attention_score_weights = self._build_memory_output_attention_layer()
+        attentive_context_vector = self._calc_memory_output_attention(
+            activate_weights=attention_weights,
+            activate_bias=attention_bias,
+            score_weights=attention_score_weights,
+            encoded_memory=encoded_memory,
+            encoded_output=encoded_output,
+            memory_size=self._memory_size
+        )
+
+        guide_context_weights, guide_output_weights, guide_bias = self._build_guide_layer()
+        # Shape: [batch_size*case_num, guide_hidden_dim]
+        guide_vector = self._calc_guide_vector(
+            guide_context_weights=guide_context_weights,
+            guide_output_weights=guide_output_weights,
+            guide_bias=guide_bias,
+            context_vector=attentive_context_vector,
+            encoded_output=encoded_output
+        )
+
+        # Operation Selector
+        operation_selector_weights, operation_selector_biases = self._build_operation_selector()
+
+        # Shape: [batch_size, operation_vocab_len], [batch_size]
+        operation_softmax_output, selected_operations = self._select_operation(
+            selector_weights=operation_selector_weights,
+            selector_biases=operation_selector_biases,
+            guide_vector=guide_vector
+        )
+
+        # Truth embedded operation
+        embedd_operation = tf.reshape(
+            tf.nn.embedding_lookup(operation_embedding, selected_operations),
+            shape=[self._batch_size, self._operation_embedding_dim]
+        )
+
+        # Argument Selector
+        argument_rnn_cell, argument_softmax_weights, argument_softmax_bias, memory_projection_weights, memory_projection_bias, max_pooling_weights = self._build_argument_selector()
+
+        # Project Memory Entry
+        # Shape: [batch_size, max_memory_size, lambda_embedding_dim]
+        projected_memory = self._project_memory_entry(
+            weights=memory_projection_weights,
+            bias=memory_projection_bias,
+            encoded_memory=encoded_memory
+        )
+
+        # Argument Vocab Embedding
+        # Shape: [batch_size, argument_candidate_num, lambda_embedding]
+        argument_embedding = self._build_argument_embedding(
+            lambda_embedding=lambda_embedding,
+            projected_memory=projected_memory,
+            auxiliary_embedding=auxiliary_argument_embedding
+        )
+
+        # [batch_size, max_argument_num]
+        argument_predictions = self._select_arguments_in_testing(
+            argument_cell=argument_rnn_cell,
+            guide_vector=guide_vector,
+            selected_operation=embedd_operation,
+            argument_embedding=argument_embedding,
+            max_pooling_weights=max_pooling_weights,
+            softmax_weights=argument_softmax_weights,
+            softmax_bias=argument_softmax_bias
+        )
+
+        self._operation_prediction = selected_operations
+        self._argument_prediction = argument_predictions
+
+    def _build_train_feed(self, batch):
+        feed_dict = dict()
+        feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
+        feed_dict[self._memory_entry_value] = batch.memory_entry_value
+        feed_dict[self._memory_size] = batch.memory_size
+        feed_dict[self._output_data_type] = batch.output_data_type
+        feed_dict[self._output_value] = batch.output_value
+        feed_dict[self._rnn_output_keep_prob] = 1. - self._dropout
+        feed_dict[self._rnn_input_keep_prob] = 1. - self._dropout
+        feed_dict[self._operation] = batch.operation
+        feed_dict[self._argument_inputs] = batch.argument_inputs
+        feed_dict[self._argument_targets] = batch.argument_targets
+        feed_dict[self._learning_rate] = batch.learning_rate
+        return feed_dict
+
+    def _build_test_feed(self, batch):
+        feed_dict = dict()
+        feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
+        feed_dict[self._memory_entry_value] = batch.memory_entry_value
+        feed_dict[self._memory_size] = batch.memory_size
+        feed_dict[self._output_data_type] = batch.output_data_type
+        feed_dict[self._output_value] = batch.output_value
+        feed_dict[self._rnn_output_keep_prob] = 1.
+        feed_dict[self._rnn_input_keep_prob] = 1.
+        return feed_dict
+
+    def train(self, batch):
+        assert not self._is_test
+        feed_dict = self._build_train_feed(batch)
+        return self._operation_prediction, self._argument_prediction, self._loss, self._optimizer, feed_dict
+
+    def predict(self, batch):
+        feed_dict = self._build_test_feed(batch)
+        return self._operation_prediction, self._argument_prediction, feed_dict
+

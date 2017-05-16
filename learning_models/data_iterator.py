@@ -20,7 +20,9 @@ class Batch:
             memory_entry_lambda,
             memory_size,
             output_data_type,
-            output_value
+            output_value,
+            operation,
+            args
     ):
         """
         :param memory_entry_data_type: [batch_size, case_num, max_memory_size]
@@ -32,6 +34,8 @@ class Batch:
         :param memory_size:            [batch_size, case_num]
         :param output_data_type:       [batch_size, case_num]
         :param output_value:           [batch_size, case_num]
+        :param operation               [batch_size]
+        :param args:                   [batch_size, max_argument_num]
         """
         self.memory_entry_data_type = memory_entry_data_type
         self.memory_entry_value = memory_entry_value
@@ -42,6 +46,18 @@ class Batch:
         self.memory_size = memory_size
         self.output_data_type = output_data_type
         self.output_value = output_value
+        self.operation = operation
+        self.argument_inputs = args[:len(args)-1]
+        self.argument_targets = args[1::]
+        self._learning_rate = 0.0
+
+    @property
+    def learning_rate(self):
+        return self._learning_rate
+
+    @learning_rate.setter
+    def learning_rate(self, rate):
+        self._learning_rate = rate
 
     @property
     def batch_size(self):
@@ -272,5 +288,7 @@ class DataIterator:
             memory_entry_lambda=memory_entry_lambda,
             memory_size=memory_size,
             output_data_type=output_data_type,
-            output_value=output_value
+            output_value=output_value,
+            operation=func,
+            args=args
         )
