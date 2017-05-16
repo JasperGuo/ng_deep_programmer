@@ -1,8 +1,9 @@
 # coding=utf8
 
-from .. import util
-from . import models_util
 import tensorflow as tf
+
+from learning_models import util
+from learning_models import models_util
 
 
 class BasicModel:

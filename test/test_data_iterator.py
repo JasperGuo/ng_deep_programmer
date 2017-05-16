@@ -5,7 +5,7 @@ sys.path += ".."
 
 import os
 from learning_models.vocab_manager import VocabManager
-from learning_models.data_iterator import DataIterator
+from learning_models.basic_model.data_iterator import DataIterator
 
 
 VOCAB_BASIC_PATH = os.path.join(os.path.abspath(os.curdir), "learning_models", "vocabs")

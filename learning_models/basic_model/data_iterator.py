@@ -3,7 +3,7 @@
 import math
 import json
 import random
-from .vocab_manager import VocabManager
+from learning_models.vocab_manager import VocabManager
 
 
 class Batch:
