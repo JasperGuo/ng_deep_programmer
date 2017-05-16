@@ -1,6 +1,6 @@
 # coding=utf8
 
-from . import util
+import util
 
 
 class VocabManager:
@@ -30,6 +30,7 @@ class VocabManager:
             self._vocab_word2id[word] = _id
             _id += 1
 
+        self._vocab.append(self.PAD_TOKEN)
         self._vocab_id2word[self.PAD_TOKEN_ID] = self.PAD_TOKEN
         self._vocab_word2id[self.PAD_TOKEN] = self.PAD_TOKEN_ID
 

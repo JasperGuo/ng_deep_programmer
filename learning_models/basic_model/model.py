@@ -1,9 +1,11 @@
 # coding=utf8
 
-import tensorflow as tf
+import sys
+sys.path.insert(0, "..")
 
-from learning_models import util
-from learning_models import models_util
+import tensorflow as tf
+import util
+import models_util
 
 
 class BasicModel:
@@ -29,10 +31,10 @@ class BasicModel:
         self._max_value_size = util.get_value(opts, "max_value_size")
         self._max_argument_num = util.get_value(opts, "max_argument_num")
 
-        if self._is_test:
-            self._batch_size = 1
-        else:
-            self._batch_size = util.get_value(opts, "batch_size")
+        # if self._is_test:
+        #     self._batch_size = 1
+        # else:
+        self._batch_size = util.get_value(opts, "batch_size")
 
         self._case_num = util.get_value(opts, "case_num")
 
@@ -71,6 +73,11 @@ class BasicModel:
 
         self._gradient_clip = util.get_value(opts, "gradient_clip", 5)
 
+        if self._is_test:
+            self._build_test_graph()
+        else:
+            self._build_train_graph()
+
     def _build_input_nodes(self):
         with tf.name_scope("model_placeholder"):
             self._memory_entry_data_type = tf.placeholder(tf.int32, [self._batch_with_case_and_memory_size],
@@ -97,7 +104,7 @@ class BasicModel:
     def _build_embedding_layer(self):
         with tf.variable_scope("data_type_embedding_layer"):
             pad_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._data_type_embedding_dim]),
+                initializer=tf.zeros([1, self._data_type_embedding_dim], dtype=tf.float32),
                 name="data_type_pad_embedding",
                 trainable=False
             )
@@ -106,13 +113,14 @@ class BasicModel:
                     [self._data_type_vocab_manager.vocab_len - 1, self._data_type_embedding_dim],
                     stddev=0.5
                 ),
-                name="data_type_embedding"
+                name="data_type_embedding",
+                dtype=tf.float32,
             )
-            data_type_embedding = tf.concat(pad_embedding, data_type_embedding)
+            data_type_embedding = tf.concat([pad_embedding, data_type_embedding], axis=0)
 
         with tf.variable_scope("operation_embedding_layer"):
             pad_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._operation_embedding_dim]),
+                initializer=tf.zeros([1, self._operation_embedding_dim], dtype=tf.float32),
                 name="operation_pad_embedding",
                 trainable=False
             )
@@ -121,13 +129,14 @@ class BasicModel:
                     [self._operation_vocab_manager.vocab_len - 1, self._operation_embedding_dim],
                     stddev=0.5
                 ),
-                name="operation_embedding"
+                name="operation_embedding",
+                dtype=tf.float32,
             )
-            operation_embedding = tf.concat(pad_embedding, operation_embedding)
+            operation_embedding = tf.concat([pad_embedding, operation_embedding], axis=0)
 
         with tf.variable_scope("digit_embedding_layer"):
             pad_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._digit_embedding_dim]),
+                initializer=tf.zeros([1, self._digit_embedding_dim], dtype=tf.float32),
                 name="digit_pad_embedding",
                 trainable=False
             )
@@ -136,28 +145,30 @@ class BasicModel:
                     [self._digit_vocab_manager.vocab_len - 1, self._digit_embedding_dim],
                     stddev=0.5
                 ),
+                dtype=tf.float32,
                 name="digit_embedding"
             )
-            digit_embedding = tf.concat(pad_embedding, digit_embedding)
+            digit_embedding = tf.concat([pad_embedding, digit_embedding], axis=0)
 
         with tf.variable_scope("lambda_embedding_layer"):
             pad_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._lambda_embedding_dim]),
-                name="digit_pad_embedding",
+                initializer=tf.zeros([1, self._lambda_embedding_dim], dtype=tf.float32),
+                name="lambda_pad_embedding",
                 trainable=False
             )
             lambda_embedding = tf.get_variable(
                 initializer=tf.truncated_normal(
-                    [self._digit_vocab_manager.vocab_len - 1, self._lambda_embedding_dim],
+                    [self._lambda_vocab_manager.vocab_len - 1, self._lambda_embedding_dim],
                     stddev=0.5
                 ),
-                name="lambda_embedding"
+                name="lambda_embedding",
+                dtype=tf.float32,
             )
-            lambda_embedding = tf.concat(pad_embedding, lambda_embedding)
+            lambda_embedding = tf.concat([pad_embedding, lambda_embedding], axis=0)
 
         with tf.variable_scope("auxiliary_argument_embedding"):
             pad_embedding = tf.get_variable(
-                initializer=tf.zeros([1, self._lambda_embedding_dim]),
+                initializer=tf.zeros([1, self._lambda_embedding_dim], dtype=tf.float32),
                 name="argument_pad_embedding",
                 trainable=False
             )
@@ -166,6 +177,7 @@ class BasicModel:
                     [1, self._lambda_embedding_dim]
                 ),
                 name="argument_begin_embedding",
+                dtype=tf.float32,
                 trainable=True
             )
             end_embedding = tf.get_variable(
@@ -173,6 +185,7 @@ class BasicModel:
                     [1, self._lambda_embedding_dim],
                 ),
                 name="argument_end_embedding",
+                dtype=tf.float32,
                 trainable=True
             )
             auxiliary_argument_embedding = tf.concat([pad_embedding, end_embedding, begin_embedding], axis=0)
@@ -329,7 +342,7 @@ class BasicModel:
             )
 
             score_weights = tf.get_variable(
-                initializer=tf.contrib.layer.xavier_initializer(),
+                initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._memory_encoder_layer_2_dim,
                        self._output_encoder_layer_2_dim],
                 name="score_weights"
@@ -385,8 +398,11 @@ class BasicModel:
             ),
             shape=[self._batch_with_case_size, self._max_memory_size]
         )
-        memory_mask = tf.less(
-            memory_template, memory_mask
+        memory_mask = tf.cast(
+            tf.less(
+                memory_template, memory_mask
+            ),
+            dtype=tf.float32
         )
 
         # Shape: [batch_size*case_num, max_memory_size]
@@ -419,13 +435,13 @@ class BasicModel:
     def _build_guide_layer(self):
         with tf.variable_scope("guide"):
             attentive_context_weights = tf.get_variable(
-                initializer=tf.contrib.layer.xavier_initializer(),
+                initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
                        self._memory_encoder_layer_2_dim],
                 name="attentive_context_weights"
             )
             output_weights = tf.get_variable(
-                initializer=tf.contrib.layer.xavier_initializer(),
+                initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
                        self._output_encoder_layer_2_dim],
                 name="output_weights"
@@ -546,7 +562,7 @@ class BasicModel:
             with tf.variable_scope("cell"):
                 argument_cell = tf.contrib.rnn.LSTMCell(
                     num_units=self._argument_selector_dim,
-                    state_it_tuple=True
+                    state_is_tuple=True
                 )
                 argument_cell = tf.contrib.rnn.DropoutWrapper(
                     cell=argument_cell,
@@ -631,19 +647,19 @@ class BasicModel:
 
     def _build_argument_embedding(self, lambda_embedding, projected_memory, auxiliary_embedding):
         """
-        Construct Argument Embedding, append a placeholder memory at last position (indicating NOP)
+        Construct Argument Embedding
         :param lambda_embedding:    [lambda_vocab_size, lambda_embedding]
-        :param projected_memory:    [batch_size, max_memory_size, projected_memory]
-        :param auxiliary_embedding: [2, lambda_embedding]
-                                        <BEGIN>
-                                        <NOP>
+        :param projected_memory:    [batch_size, max_memory_size, lambda_embedding_dim]
+        :param auxiliary_embedding: [3, lambda_embedding]
+                                        PAD, END, BEGIN
         :return:
             [batch_size, (argument_candidate_num), lambda_embedding]
         """
 
-        # Shape: [lambda_vocab_size + 2, lambda_embedding]
-        _lambda_embedding = tf.concat(lambda_embedding, auxiliary_embedding)
+        # Shape: [lambda_vocab_len+3, lambda_embedding]
+        _lambda_embedding = tf.concat([lambda_embedding, auxiliary_embedding], axis=0)
 
+        # Shape: [batch_size, lambda_vocab_len+3, lambda_embedding]
         expanded_embedding = tf.tile(
             tf.expand_dims(
                 _lambda_embedding,
@@ -651,7 +667,7 @@ class BasicModel:
             ),
             [self._batch_size, 1, 1]
         )
-        argument_embedding = tf.concat([projected_memory, expanded_embedding], axis=2)
+        argument_embedding = tf.concat([projected_memory, expanded_embedding], axis=1)
         return argument_embedding
 
     def _look_up_argument_embedding(self, argument_embedding, arguments):
@@ -796,7 +812,7 @@ class BasicModel:
                 ),
                 shape=[self._batch_size, self._max_argument_num, self._argument_candidate_num]
             ),
-            dim=2
+            dim=-1
         )
 
         predictions = tf.arg_max(softmax_outputs, dimension=2)
@@ -849,7 +865,7 @@ class BasicModel:
         )
 
         # Initialize an zeros states
-        initial_state = tf.zeros([self._argument_rnn_layers, 2, self._batch_size, self._argument_selector_dim])
+        initial_state = tf.zeros([self._argument_rnn_layers, 2, self._batch_size*self._case_num, self._argument_selector_dim])
         l = tf.unstack(initial_state, axis=0)
         rnn_state_tuple = tuple(
             [tf.contrib.rnn.LSTMStateTuple(l[idx][0], l[idx][1])
@@ -857,14 +873,14 @@ class BasicModel:
         )
 
         with tf.name_scope("select_arguments"):
-            def __cond(_curr_ts, _inputs, rnn_states, prediction_array):
+            def __cond(_curr_ts, _inputs, _rnn_states, prediction_array):
                 return tf.less(_curr_ts, self._max_argument_num)
 
-            def __loop_body(_curr_ts, _inputs, rnn_states, prediction_array):
+            def __loop_body(_curr_ts, _inputs, _rnn_states, prediction_array):
                 """
                 :param _curr_ts:            Scalar
                 :param _inputs:             [batch_size, 1]
-                :param rnn_states:          LSTMStateTuple
+                :param _rnn_states:         LSTMStateTuple
                 :param prediction_array:    TensorArray
                 :return:
                 """
@@ -897,7 +913,8 @@ class BasicModel:
                 _argument_rnn_outputs, _argument_rnn_states = tf.nn.dynamic_rnn(
                     cell=argument_cell,
                     inputs=concatenated_input_embedding,
-                    dtype=tf.float32
+                    dtype=tf.float32,
+                    initial_state=_rnn_states
                 )
 
                 # Shape: [batch_size*case_num, argument_selector_dim]
@@ -939,7 +956,7 @@ class BasicModel:
                         ),
                         shape=[self._batch_size, self._argument_candidate_num]
                     ),
-                    dim=1
+                    dim=-1
                 )
 
                 # Shape: [batch_size, 1]

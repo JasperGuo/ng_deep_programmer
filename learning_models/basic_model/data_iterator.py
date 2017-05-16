@@ -1,9 +1,12 @@
 # coding=utf8
 
+import sys
+sys.path.insert(0, "..")
+
 import math
 import json
 import random
-from learning_models.vocab_manager import VocabManager
+from vocab_manager import VocabManager
 
 
 class Batch:
