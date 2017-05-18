@@ -511,8 +511,16 @@ class BasicModel:
                 name="output_bias"
             )
 
+            max_pooling_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_selector_dim,
+                       self._operation_selector_dim],
+                name="max_pooling_weights"
+            )
+
             weights = {
                 "W1": layer_1_weights,
+                "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
@@ -539,7 +547,12 @@ class BasicModel:
             # Max Pooling
             reshaped_layer_1 = tf.transpose(
                 tf.reshape(
-                    layer_1,
+                    tf.tanh(
+                        tf.matmul(
+                            layer_1,
+                            selector_weights["max_pooling_W"]
+                        ),
+                    ),
                     shape=[self._batch_size, self._case_num, self._operation_selector_dim]
                 ),
                 perm=[0, 2, 1]
@@ -601,6 +614,14 @@ class BasicModel:
                     shape=[self._lambda_embedding_dim],
                     name="bias"
                 )
+                memory_pooling_weights = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[
+                        self._lambda_embedding_dim,
+                        self._lambda_embedding_dim
+                    ],
+                    name="memory_pooling_weights"
+                )
 
             with tf.variable_scope("max_pooling_weights"):
                 pooling_weights = tf.get_variable(
@@ -610,13 +631,42 @@ class BasicModel:
                     name="weights"
                 )
 
-            return argument_cell, weights, bias, projection_weights, projection_bias, pooling_weights
+            with tf.variable_scope("projection_weights"):
+                operation_projection_weights = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._operation_embedding_dim,
+                           self._operation_embedding_dim],
+                    name="operation"
+                )
+                guide_vector_projection_weights = tf.get_variable(
+                    initializer=tf.contrib.layers.xavier_initializer(),
+                    shape=[self._guide_hidden_dim,
+                           self._guide_hidden_dim],
+                    name="guide"
+                )
 
-    def _project_memory_entry(self, weights, bias, encoded_memory):
+            w = {
+                "softmax_weights": weights,
+                "memory_projection_weights": projection_weights,
+                "memory_pooling_weights": memory_pooling_weights,
+                "argument_pooling_weights": pooling_weights,
+                "operation_projection_weights": operation_projection_weights,
+                "guide_vector_projection_weights": guide_vector_projection_weights
+            }
+
+            b = {
+                "softmax_bias": bias,
+                "memory_projection_bias": projection_bias,
+            }
+
+            return argument_cell, w, b
+
+    def _project_memory_entry(self, weights, bias, pooling_weights, encoded_memory):
         """
         Linear Mapping to project memory, and Perform Max pooling
         :param weights:         [memory_encoder_layer_2_dim, lambda_embedding_dim]
         :param bias:            [lambda_embedding_dim]
+        :param pooling_weights: [lambda_embedding_dim, lambda_embedding_dim]
         :param encoded_memory:  [batch_size*case_num*memory_max_size, memory_encoder_layer_2_dim]
         :return:
             [batch_size, max_memory_size, lambda_embedding_dim]
@@ -633,7 +683,12 @@ class BasicModel:
         # Shape: [batch_size, max_memory_size, lambda_embedding_dim, case_num]
         reshaped_memory = tf.transpose(
             tf.reshape(
-                projected_memory,
+                tf.tanh(
+                    tf.matmul(
+                        projected_memory,
+                        pooling_weights
+                    ),
+                ),
                 shape=[self._batch_size, self._case_num, self._max_memory_size, self._lambda_embedding_dim]
             ),
             perm=[0, 2, 3, 1]
@@ -708,18 +763,22 @@ class BasicModel:
             arguments,
             max_pooling_weights,
             softmax_weights,
-            softmax_bias
+            softmax_bias,
+            operation_projection_weights,
+            guide_vector_projection_weights
     ):
         """
         Select arguments in training process
         :param argument_cell:       LSTMCell
         :param guide_vector:        [batch_size*case_num, guide_hidden_dim]
-        :param selected_operation:  [batch_size, operation_selector_dim]
+        :param selected_operation:  [batch_size, operation_embedding_dim]
         :param argument_embedding:  [batch_size, (argument_candidate_num), lambda_embedding_dim]
         :param arguments:           [batch_size, max_argument_num]:
         :param max_pooling_weights: [argument_selector_hidden_dim, argument_selector_hidden_dim],
         :param softmax_weights:           []
         :param softmax_bias:
+        :param operation_projection_weights
+        :param guide_vector_projection_weights
         :return:
             [batch_size, max_argument_num]
         """
@@ -742,7 +801,10 @@ class BasicModel:
         # Replicate operation embedding
         replicated_operation_embedded = tf.reshape(
             tf.tile(
-                selected_operation,
+                tf.matmul(
+                    selected_operation,
+                    operation_projection_weights
+                ),
                 [1, self._case_num * self._max_argument_num]
             ),
             shape=[self._batch_with_case_size, self._max_argument_num, self._operation_embedding_dim]
@@ -751,7 +813,10 @@ class BasicModel:
         # Replicate guide embedding
         replicated_guide_vector = tf.reshape(
             tf.tile(
-                guide_vector,
+                tf.matmul(
+                    guide_vector,
+                    guide_vector_projection_weights
+                ),
                 [1, self._max_argument_num]
             ),
             shape=[self._batch_with_case_size, self._max_argument_num, self._guide_hidden_dim]
@@ -829,17 +894,21 @@ class BasicModel:
             argument_embedding,
             max_pooling_weights,
             softmax_weights,
-            softmax_bias
+            softmax_bias,
+            operation_projection_weights,
+            guide_vector_projection_weights
     ):
         """
         Select arguments in testing process
         :param argument_cell:              LSTMCell
         :param guide_vector:               [batch_size*case_num, guide_hidden_dim]
-        :param selected_operation:         [batch_size, operation_selector_dim]
+        :param selected_operation:         [batch_size, operation_embedding_dim]
         :param argument_embedding:         [batch_size, (argument_candidate_num), lambda_embedding_dim]
         :param max_pooling_weights:        [argument_selector_hidden_dim, argument_selector_hidden_dim]
         :param softmax_weights:            [argument_selector_dim, argument_candidate_num]
         :param softmax_bias:               [argument_candidate_num]
+        :param operation_projection_weights [operation_embedding_dim, operation_embedding_dim]
+        :param guide_vector_projection_weights [guide_hidden_dim, guide_hidden_dim]
         :return:
         """
         assert self._is_test
@@ -848,7 +917,10 @@ class BasicModel:
         # Shape: [batch_size*case_num, 1, operation_embedding_dim]
         replicated_operation_embedded = tf.reshape(
             tf.tile(
-                selected_operation,
+                tf.matmul(
+                    selected_operation,
+                    operation_projection_weights
+                ),
                 [1, self._case_num]
             ),
             shape=[self._batch_with_case_size, 1, self._operation_embedding_dim]
@@ -856,7 +928,10 @@ class BasicModel:
 
         # Shape: [batch_size*case_num, 1, guide_hidden_dim]
         reshaped_guide_vector = tf.reshape(
-            guide_vector,
+            tf.matmul(
+                guide_vector,
+                guide_vector_projection_weights
+            ),
             shape=[self._batch_with_case_size, 1, self._guide_hidden_dim]
         )
 
@@ -1057,13 +1132,14 @@ class BasicModel:
         )
 
         # Argument Selector
-        argument_rnn_cell, argument_softmax_weights, argument_softmax_bias, memory_projection_weights, memory_projection_bias, max_pooling_weights = self._build_argument_selector()
+        argument_rnn_cell, argument_selector_weights, argument_selector_biases = self._build_argument_selector()
 
         # Project Memory Entry
         # Shape: [batch_size, max_memory_size, lambda_embedding_dim]
         projected_memory = self._project_memory_entry(
-            weights=memory_projection_weights,
-            bias=memory_projection_bias,
+            weights=argument_selector_weights["memory_projection_weights"],
+            bias=argument_selector_biases["memory_projection_bias"],
+            pooling_weights=argument_selector_weights["memory_pooling_weights"],
             encoded_memory=encoded_memory
         )
 
@@ -1083,9 +1159,11 @@ class BasicModel:
             selected_operation=embedd_operation,
             argument_embedding=argument_embedding,
             arguments=self._argument_inputs,
-            max_pooling_weights=max_pooling_weights,
-            softmax_weights=argument_softmax_weights,
-            softmax_bias=argument_softmax_bias
+            max_pooling_weights=argument_selector_weights["argument_pooling_weights"],
+            softmax_weights=argument_selector_weights["softmax_weights"],
+            softmax_bias=argument_selector_biases["softmax_bias"],
+            operation_projection_weights=argument_selector_weights["operation_projection_weights"],
+            guide_vector_projection_weights=argument_selector_weights["guide_vector_projection_weights"]
         )
 
         # Prevent inf
@@ -1228,13 +1306,14 @@ class BasicModel:
         )
 
         # Argument Selector
-        argument_rnn_cell, argument_softmax_weights, argument_softmax_bias, memory_projection_weights, memory_projection_bias, max_pooling_weights = self._build_argument_selector()
+        argument_rnn_cell, argument_selector_weights, argument_selector_biases = self._build_argument_selector()
 
         # Project Memory Entry
         # Shape: [batch_size, max_memory_size, lambda_embedding_dim]
         projected_memory = self._project_memory_entry(
-            weights=memory_projection_weights,
-            bias=memory_projection_bias,
+            weights=argument_selector_weights["memory_projection_weights"],
+            bias=argument_selector_biases["memory_projection_bias"],
+            pooling_weights=argument_selector_weights["memory_pooling_weights"],
             encoded_memory=encoded_memory
         )
 
@@ -1252,9 +1331,11 @@ class BasicModel:
             guide_vector=guide_vector,
             selected_operation=embedd_operation,
             argument_embedding=argument_embedding,
-            max_pooling_weights=max_pooling_weights,
-            softmax_weights=argument_softmax_weights,
-            softmax_bias=argument_softmax_bias
+            max_pooling_weights=argument_selector_weights["argument_pooling_weights"],
+            softmax_weights=argument_selector_weights["softmax_weights"],
+            softmax_bias=argument_selector_biases["softmax_bias"],
+            operation_projection_weights=argument_selector_weights["operation_projection_weights"],
+            guide_vector_projection_weights=argument_selector_weights["guide_vector_projection_weights"]
         )
 
         self._operation_prediction = selected_operations
