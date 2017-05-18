@@ -17,6 +17,7 @@ class Batch:
             self,
             memory_entry_data_type,
             memory_entry_value,
+            memory_entry_value_size,
             memory_entry_opt,
             memory_entry_src1,
             memory_entry_src2,
@@ -24,13 +25,15 @@ class Batch:
             memory_size,
             output_data_type,
             output_value,
+            output_value_size,
             operation,
             args
     ):
         """
-        :param memory_entry_data_type: [batch_size*case_num, max_memory_size]
-        :param memory_entry_value:     [batch_size*case_num, max_memory_size]
-        :param memory_entry_opt:       [batch_size]
+        :param memory_entry_data_type: [batch_size*case_num*max_memory_size]
+        :param memory_entry_value:     [batch_size*case_num*max_memory_size, max_value_size]
+        :param memory_entry_value_size:[batch_size*case*max_memory_size]
+        :param memory_entry_opt:       [batch_size*case_num*max_memory_size]
         :param memory_entry_src1:      [batch_size*case_num*max_memory_size]
         :param memory_entry_src2:      [batch_size*case_num*max_memory_size]
         :param memory_entry_lambda:    [batch_size*case_num*max_memory_size]
@@ -42,6 +45,7 @@ class Batch:
         """
         self.memory_entry_data_type = memory_entry_data_type
         self.memory_entry_value = memory_entry_value
+        self.memory_entry_value_size = memory_entry_value_size
         self.memory_entry_opt = memory_entry_opt
         self.memory_entry_src1 = memory_entry_src1
         self.memory_entry_src2 = memory_entry_src2
@@ -49,6 +53,7 @@ class Batch:
         self.memory_size = memory_size
         self.output_data_type = output_data_type
         self.output_value = output_value
+        self.output_value_size = output_value_size
         self.operation = operation
 
         self.argument_inputs = list()
@@ -157,8 +162,10 @@ class DataIterator:
 
     def _process_memory(self, memory_entry):
         if isinstance(memory_entry["value"], list):
+            value_size = len(memory_entry["value"])
             value = [self._digit_vocab.word2id(v) for v in memory_entry["value"]] + [VocabManager.PAD_TOKEN_ID] * (self._max_value_length - len(memory_entry["value"]))
         else:
+            value_size = 1
             value = [self._digit_vocab.word2id(memory_entry["value"])] + [VocabManager.PAD_TOKEN_ID] * (self._max_value_length - 1)
 
         for src in ["src1", "src2"]:
@@ -173,6 +180,7 @@ class DataIterator:
 
         return {
             "value": value,
+            "value_size": value_size,
             "src1": memory_entry["src1"],
             "src2": memory_entry["src2"],
             "data_type": data_type,
@@ -191,6 +199,7 @@ class DataIterator:
         for i in range(diff):
             memory.append({
                 "value": [VocabManager.PAD_TOKEN_ID] * self._max_value_length,
+                "value_size": 0,
                 "src1": 0,
                 "src2": 0,
                 "data_type": VocabManager.PAD_TOKEN_ID,
@@ -200,13 +209,16 @@ class DataIterator:
 
     def _process_output(self, output):
         if isinstance(output["value"], list):
+            value_size = len(output["value"])
             value = [self._digit_vocab.word2id(v) for v in output["value"]] + [VocabManager.PAD_TOKEN_ID] * (self._max_value_length - len(output["value"]))
         else:
+            value_size = 1
             value = [self._digit_vocab.word2id(output["value"])] + [VocabManager.PAD_TOKEN_ID] * (self._max_value_length - 1)
 
         data_type = self._data_type_vocab.word2id(output["data_type"])
 
         return {
+            "value_size": value_size,
             "value": value,
             "data_type": data_type
         }
@@ -260,6 +272,7 @@ class DataIterator:
                     "memory_size": actual_memory_size,
                     "memory": processed_memory,
                     "output_value": processed_output["value"],
+                    "output_value_size": processed_output["value_size"],
                     "output_data_type": processed_output["data_type"]
                 })
             func = self._operation_vocab.word2id(detail[0]["func"])
@@ -284,6 +297,7 @@ class DataIterator:
         # [batch_size * case_num * max_memory_length]
         memory_entry_data_type = list()
         memory_entry_value = list()
+        memory_entry_value_size = list()
         memory_entry_opt = list()
         memory_entry_src1 = list()
         memory_entry_src2 = list()
@@ -295,6 +309,7 @@ class DataIterator:
         # [batch_size * case_num]
         output_data_type = list()
         output_value = list()
+        output_value_size = list()
 
         func = list()
         args = list()
@@ -306,9 +321,11 @@ class DataIterator:
                 memory_size.append(case["memory_size"])
                 output_data_type.append(case["output_data_type"])
                 output_value.append(case["output_value"])
+                output_value_size.append(case["output_value_size"])
                 for memory_entry in case["memory"]:
                     memory_entry_data_type.append(memory_entry["data_type"])
                     memory_entry_value.append(memory_entry["value"])
+                    memory_entry_value_size.append(memory_entry["value_size"])
                     memory_entry_opt.append(memory_entry["opt"])
                     memory_entry_src1.append(memory_entry["src1"])
                     memory_entry_src2.append(memory_entry["src2"])
@@ -317,6 +334,7 @@ class DataIterator:
         return Batch(
             memory_entry_data_type=memory_entry_data_type,
             memory_entry_value=memory_entry_value,
+            memory_entry_value_size=memory_entry_value_size,
             memory_entry_src1=memory_entry_src1,
             memory_entry_src2=memory_entry_src2,
             memory_entry_opt=memory_entry_opt,
@@ -324,6 +342,7 @@ class DataIterator:
             memory_size=memory_size,
             output_data_type=output_data_type,
             output_value=output_value,
+            output_value_size=output_value_size,
             operation=func,
             args=args
         )

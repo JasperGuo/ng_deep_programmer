@@ -17,3 +17,20 @@ def softmax_with_mask(tensor, mask):
         shape=[-1, 1]
     )
     return tf.div(masked_exp_tensor, total)
+
+
+def get_last_relevant(output, length):
+    """
+    RNN Output
+    :param output:  [shape_0, shape_1, shape_2]
+    :param length:  [shape_0]
+    :return:
+        [shape_0, shape_2]
+    """
+    shape_2 = tf.shape(output)[2]
+    slices = list()
+    for idx, l in enumerate(tf.unstack(length)):
+        last = tf.slice(output, begin=[idx, l - 1, 0], size=[1, 1, shape_2])
+        slices.append(last)
+    lasts = tf.concat(slices, 0)
+    return lasts
