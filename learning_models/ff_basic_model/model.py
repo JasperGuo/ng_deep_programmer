@@ -493,7 +493,7 @@ class RNNBasicModel:
 
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._case_num*self._guide_hidden_dim,
+                shape=[self._guide_hidden_dim,
                        self._operation_vocab_manager.vocab_len],
                 name="output_weights"
             )
@@ -559,15 +559,12 @@ class RNNBasicModel:
             )
             """
 
-            concatenated_guide_vector = tf.reshape(
-                tf.transpose(
-                    tf.reshape(
-                        guide_vector,
-                        shape=[self._batch_size, self._case_num, self._guide_hidden_dim],
-                    ),
-                    perm=[0, 2, 1]
+            concatenated_guide_vector = tf.reduce_sum(
+                tf.reshape(
+                    guide_vector,
+                    shape=[self._batch_size, self._case_num, self._guide_hidden_dim],
                 ),
-                shape=[self._batch_size, self._case_num*self._guide_hidden_dim]
+                axis=1
             )
 
             output_layer = tf.add(tf.matmul(concatenated_guide_vector, selector_weights["output_W"]),

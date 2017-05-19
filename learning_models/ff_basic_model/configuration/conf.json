@@ -12,7 +12,7 @@
   "result_log": "result_log",
   "is_test_capability": true,
   "checkpoint_path": "checkpoint",
-  "case_num": 1,
+  "case_num": 2,
   "max_memory_size": 10,
   "max_value_size": 20,
   "max_argument_num": 4,
