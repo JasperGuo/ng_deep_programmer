@@ -64,6 +64,9 @@ class RNNBasicModel:
 
         self._gradient_clip = util.get_value(opts, "gradient_clip", 5)
 
+        # Regularization term
+        self._regularization_terms = list()
+
         if self._is_test:
             self._build_test_graph()
         else:
@@ -222,7 +225,6 @@ class RNNBasicModel:
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
-            layer_2 = tf.nn.relu(layer_2)
 
             return layer_2
 
@@ -251,7 +253,6 @@ class RNNBasicModel:
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
-            layer_2 = tf.nn.relu(layer_2)
 
             return layer_2
 
@@ -269,7 +270,6 @@ class RNNBasicModel:
                 shape=[self._memory_encoder_layer_2_dim],
                 name="bias"
             )
-
             score_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._memory_encoder_layer_2_dim*2,
