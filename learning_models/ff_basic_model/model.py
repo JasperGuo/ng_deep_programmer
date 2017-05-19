@@ -455,18 +455,42 @@ class RNNBasicModel:
         :param context_vector:          [batch_size*case_num, memory_encoder_layer_2_dim]
         :param encoded_output:          [batch_size*case_num, output_encoder_layer_2_dim]
         :return:
-            [batch_size*case_num, guide_hidden_Dim]
+            [batch_size, guide_hidden_Dim]
         """
+        # Shape: [batch_size, memory_encoder_layer_2_dim]
+        pooled_context_vector = tf.reduce_mean(
+            tf.transpose(
+                tf.reshape(
+                    context_vector,
+                    shape=[self._batch_size, self._case_num, self._memory_encoder_layer_2_dim]
+                ),
+                perm=[0, 2, 1]
+            ),
+            axis=2
+        )
+
+        # Shape: [batch_size, output_encoder_layer_2_dim]
+        pooled_encoded_output = tf.reduce_mean(
+            tf.transpose(
+                tf.reshape(
+                    encoded_output,
+                    shape=[self._batch_size, self._case_num, self._output_encoder_layer_2_dim]
+                ),
+                perm=[0, 2, 1]
+            ),
+            axis=2
+        )
+
         return tf.nn.relu(
             tf.add(
                 tf.add(
                     tf.matmul(
-                        context_vector,
+                        pooled_context_vector,
                         guide_context_weights,
                         transpose_b=True
                     ),
                     tf.matmul(
-                        encoded_output,
+                        pooled_encoded_output,
                         guide_output_weights,
                         transpose_b=True
                     )
@@ -477,20 +501,6 @@ class RNNBasicModel:
 
     def _build_operation_selector(self):
         with tf.variable_scope("operation_selector"):
-            """
-            layer_1_weights = tf.get_variable(
-                initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._guide_hidden_dim,
-                       self._operation_selector_dim],
-                name="weights_1"
-            )
-            layer_1_bias = tf.get_variable(
-                initializer=tf.zeros_initializer(),
-                shape=[self._operation_selector_dim],
-                name="bias_1"
-            )
-            """
-
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
@@ -526,7 +536,7 @@ class RNNBasicModel:
         """
         :param selector_weights:
         :param selector_biases:
-        :param guide_vector: [batch_size*case_num, guide_hidden_dim]
+        :param guide_vector: [batch_size, guide_hidden_dim]
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
@@ -558,16 +568,7 @@ class RNNBasicModel:
                 axis=2
             )
             """
-
-            concatenated_guide_vector = tf.reduce_sum(
-                tf.reshape(
-                    guide_vector,
-                    shape=[self._batch_size, self._case_num, self._guide_hidden_dim],
-                ),
-                axis=1
-            )
-
-            output_layer = tf.add(tf.matmul(concatenated_guide_vector, selector_weights["output_W"]),
+            output_layer = tf.add(tf.matmul(guide_vector, selector_weights["output_W"]),
                                   selector_biases["output_b"])
 
             # Shape: [batch_size*case_num, operation_vocab_len]
