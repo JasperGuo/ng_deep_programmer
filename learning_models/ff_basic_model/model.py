@@ -545,12 +545,12 @@ class RNNBasicModel:
                             selector_weights["max_pooling_W"]
                         ),
                     ),
-                    shape=[self._batch_size, self._case_num, self._operation_selector_dim]
+                    shape=[self._batch_size, self._case_num, self._guide_hidden_dim]
                 ),
                 perm=[0, 2, 1]
             )
 
-            # Shape: [batch_size, operation_selector_dim]
+            # Shape: [batch_size, guide_hidden_dim]
             max_pooling_result = tf.reduce_max(
                 reshaped_layer_1,
                 axis=2
