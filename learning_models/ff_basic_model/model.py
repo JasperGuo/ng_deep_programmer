@@ -537,6 +537,7 @@ class RNNBasicModel:
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             """
             # Max Pooling
+            """
             reshaped_layer_1 = tf.transpose(
                 tf.reshape(
                     tf.tanh(
@@ -555,12 +556,28 @@ class RNNBasicModel:
                 reshaped_layer_1,
                 axis=2
             )
+            """
 
-            output_layer = tf.add(tf.matmul(max_pooling_result, selector_weights["output_W"]),
+            output_layer = tf.add(tf.matmul(guide_vector, selector_weights["output_W"]),
                                   selector_biases["output_b"])
 
+            # Shape: [batch_size*case_num, operation_vocab_len]
             softmax_output = tf.nn.softmax(output_layer)
-            selection = tf.arg_max(softmax_output, dimension=1)
+
+            # pooling
+            # Shape: [batch_size, operation_vocab_len]
+            pooled_softmax_output = tf.nn.softmax(
+                tf.reduce_sum(
+                    tf.reshape(
+                        softmax_output,
+                        shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
+                    ),
+                    axis=1
+                ),
+                dim=-1
+            )
+
+            selection = tf.arg_max(pooled_softmax_output, dimension=1)
 
             return softmax_output, selection
 
