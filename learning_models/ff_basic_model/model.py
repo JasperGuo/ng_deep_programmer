@@ -502,16 +502,17 @@ class RNNBasicModel:
                 shape=[self._operation_vocab_manager.vocab_len],
                 name="output_bias"
             )
-
+            """
             max_pooling_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
                        self._guide_hidden_dim],
                 name="max_pooling_weights"
             )
+            """
 
             weights = {
-                "max_pooling_W": max_pooling_weights,
+                # "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
