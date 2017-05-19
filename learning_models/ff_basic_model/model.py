@@ -551,7 +551,7 @@ class RNNBasicModel:
             )
 
             # Shape: [batch_size, guide_hidden_dim]
-            max_pooling_result = tf.reduce_max(
+            max_pooling_result = tf.reduce_mean(
                 reshaped_layer_1,
                 axis=2
             )
