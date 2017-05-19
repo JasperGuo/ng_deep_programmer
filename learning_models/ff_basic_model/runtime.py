@@ -181,9 +181,9 @@ class ModelRuntime:
 
             total += batch.batch_size
 
-        accuracy = correct/total
-        operation_accuracy = operation_correct/total
-        argument_accuracy = argument_correct/total
+        accuracy = float(correct)/float(total)
+        operation_accuracy = float(operation_correct)/float(total)
+        argument_accuracy = float(argument_correct)/float(total)
         return accuracy, operation_accuracy, argument_accuracy
 
     def train(self):
@@ -219,9 +219,9 @@ class ModelRuntime:
                 average_loss = np.average(np.array(losses))
 
                 tqdm.write("epoch: %d, loss: %f" % (epoch, average_loss))
-                train_accuracy = train_correct/total
-                train_opt_accuracy = train_opt_correct/total
-                train_arg_accuracy = train_arg_correct/total
+                train_accuracy = float(train_correct)/float(total)
+                train_opt_accuracy = float(train_opt_correct)/float(total)
+                train_arg_accuracy = float(train_arg_correct)/float(total)
                 tqdm.write(", ".join(['Train', "accuracy: %f, opt_accuracy: %f, arg_accuracy: %f" % (train_accuracy, train_opt_accuracy, train_arg_accuracy)]))
 
                 self._dev_data_iterator.shuffle()
