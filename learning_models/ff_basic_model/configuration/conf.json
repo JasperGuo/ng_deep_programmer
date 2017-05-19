@@ -26,11 +26,11 @@
   "output_encoder_layer_2_dim": 250,
   "guide_hidden_dim": 150,
   "operation_selector_dim": 100,
-  "train_file": "feed_tf\\step_1_train.json",
-  "test_file": "feed_tf\\step_1_test.json",
-  "dev_file": "feed_tf\\step_1_dev.json",
-  "lambda_vocab_file": "vocabs\\lambda.txt",
-  "digit_vocab_file": "vocabs\\digit.txt",
-  "operation_vocab_file": "vocabs\\operation.txt",
-  "data_type_vocab_file": "vocabs\\data_type.txt"
+  "train_file": "feed_tf/step_1_train.json",
+  "test_file": "feed_tf/step_1_test.json",
+  "dev_file": "feed_tf/step_1_dev.json",
+  "lambda_vocab_file": "vocabs/lambda.txt",
+  "digit_vocab_file": "vocabs/digit.txt",
+  "operation_vocab_file": "vocabs/operation.txt",
+  "data_type_vocab_file": "vocabs/data_type.txt"
 }

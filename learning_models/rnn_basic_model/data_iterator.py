@@ -142,7 +142,7 @@ class DataIterator:
         self._batch_size = batch_size
         self._data = self._read_data(data_path)
         self._size = len(self._data)
-        self._batch_per_epoch = math.floor(self._size / self._batch_size)
+        self._batch_per_epoch = int(math.floor(self._size / self._batch_size))
 
     @property
     def batch_size(self):
