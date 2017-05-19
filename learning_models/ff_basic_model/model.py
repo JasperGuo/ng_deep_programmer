@@ -270,22 +270,91 @@ class RNNBasicModel:
                 name="bias"
             )
 
-            score_weights = tf.get_variable(
+            score_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._memory_encoder_layer_2_dim,
+                shape=[self._memory_encoder_layer_2_dim*2,
                        self._output_encoder_layer_2_dim],
-                name="score_weights"
+                name="score_weights_1"
             )
 
-            return weights, bias, score_weights
+            score_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[
+                    self._memory_encoder_layer_2_dim,
+                    1
+                ],
+                name="score_weights_2"
+            )
 
-    def _calc_memory_output_attention(self, activate_weights, activate_bias, score_weights, encoded_memory,
+            score_bias_1 = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[
+                    self._memory_encoder_layer_2_dim
+                ],
+                name="score_bias_1"
+            )
+
+            score_bias_2 = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[1],
+                name="score_bias_2"
+            )
+
+            w = {
+                "context_activate_weights": weights,
+                "score_weights_1": score_weights_1,
+                "score_weights_2": score_weights_2
+            }
+
+            b = {
+                "context_activate_bias": bias,
+                "score_bias_1": score_bias_1,
+                "score_bias_2": score_bias_2
+            }
+
+            return w, b
+
+    def _calc_attention_scores(self, score_weights, score_bias, encoded_memory, encoded_output):
+        """
+        Calculate attention score
+        :param score_weights:
+        :param score_bias:
+        :param encoded_memory: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+        :param encoded_output: [batch_size*case_num*max_memory_size, output_encoder_layer_2_dim]
+        :return:
+            [batch_size*case_num*max_memory_size]
+        """
+        feature_1 = tf.multiply(encoded_memory, encoded_output)
+        feature_2 = tf.abs(tf.subtract(encoded_memory, encoded_output))
+
+        feature = tf.concat([feature_1, feature_2], axis=1)
+
+        layer_1 = tf.tanh(
+            tf.add(
+                tf.matmul(
+                    feature,
+                    score_weights["score_weights_1"]
+                ),
+                score_bias["score_bias_1"]
+            )
+        )
+        layer_1 = tf.nn.dropout(layer_1, keep_prob=self._dnn_keep_prob)
+        output_layer = tf.reshape(
+            tf.add(
+                tf.matmul(
+                    layer_1,
+                    score_weights["score_weights_2"]
+                ),
+                score_bias["score_bias_2"]
+            ),
+            shape=[self._batch_with_case_and_memory_size]
+        )
+        return output_layer
+
+    def _calc_memory_output_attention(self, attention_weights, attention_bias, encoded_memory,
                                       encoded_output, memory_size):
         """
         Calculate Memory, Output Attention
-        :param activate_weights:    [memory_encoder_layer_2_dim, memory_encoder_layer_2_dim]
-        :param activate_bias:       [memory_encoder_layer_2_dim]
-        :param score_weights:       [memory_encoder_layer_2_dim, output_encoder_layer_2_dim]
         :param encoded_memory:      [batch_size*case_num*memory_size, memory_encoder_layer_2_dim]
         :param encoded_output:      [batch_size*case_num, output_encoder_layer_2_dim]
         :param memory_size:         [batch_size*case_num]
@@ -305,13 +374,7 @@ class RNNBasicModel:
         # Calculate Attention Score
         # Shape: [batch_size*case_num, max_memory_size]
         scores = tf.reshape(
-            tf.reduce_sum(
-                tf.multiply(
-                    tf.matmul(encoded_memory, score_weights),
-                    replicated_encoded_output
-                ),
-                axis=1
-            ),
+            self._calc_attention_scores(attention_weights, attention_bias, encoded_memory, replicated_encoded_output),
             shape=[self._batch_with_case_size, self._max_memory_size]
         )
 
@@ -354,9 +417,9 @@ class RNNBasicModel:
         attentive_context_vector = tf.tanh(
             tf.add(
                 tf.matmul(
-                    context_vector, activate_weights, transpose_b=True
+                    context_vector, attention_weights["context_activate_weights"], transpose_b=True
                 ),
-                activate_bias
+                attention_bias["context_activate_bias"]
             )
         )
         return attentive_context_vector
@@ -523,11 +586,10 @@ class RNNBasicModel:
                                              output_value_embedded)
 
         # Guide
-        attention_weights, attention_bias, attention_score_weights = self._build_memory_output_attention_layer()
+        attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector = self._calc_memory_output_attention(
-            activate_weights=attention_weights,
-            activate_bias=attention_bias,
-            score_weights=attention_score_weights,
+            attention_weights=attention_weights,
+            attention_bias=attention_bias,
             encoded_memory=encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
@@ -615,11 +677,10 @@ class RNNBasicModel:
                                              output_value_embedded)
 
         # Guide
-        attention_weights, attention_bias, attention_score_weights = self._build_memory_output_attention_layer()
+        attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector = self._calc_memory_output_attention(
-            activate_weights=attention_weights,
-            activate_bias=attention_bias,
-            score_weights=attention_score_weights,
+            attention_weights=attention_weights,
+            attention_bias=attention_bias,
             encoded_memory=encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
