@@ -493,7 +493,7 @@ class RNNBasicModel:
 
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._guide_hidden_dim,
+                shape=[self._case_num*self._guide_hidden_dim,
                        self._operation_vocab_manager.vocab_len],
                 name="output_weights"
             )
