@@ -80,16 +80,10 @@ class RNNBasicModel:
             self._output_data_type = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_data_type")
             self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size],
                                                 name="output_value")
-
-            self._rnn_output_keep_prob = tf.placeholder(tf.float32, name="output_keep_prob")
-            self._rnn_input_keep_prob = tf.placeholder(tf.float32, name="input_keep_prob")
+            self._dnn_keep_prob = tf.placeholder(tf.float32, name="dnn_keep_prob")
 
             if not self._is_test:
                 self._operation = tf.placeholder(tf.int32, [self._batch_size], name="operation")
-                # <S>-arg0-arg1-arg2
-                self._argument_inputs = tf.placeholder(tf.int32, [self._batch_size, self._max_argument_num], name="argument_inputs")
-                # arg0-arg1-arg3-</S>
-                self._argument_targets = tf.placeholder(tf.int32, [self._batch_size, self._max_argument_num], name="argument")
                 self._learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
     def _build_embedding_layer(self):
@@ -226,7 +220,7 @@ class RNNBasicModel:
         with tf.name_scope("encode_memory"):
             layer_1 = tf.add(tf.matmul(concatenated_memory_entry_embedded, weights["W1"]), biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
-
+            layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
             layer_2 = tf.nn.relu(layer_2)
 
@@ -255,7 +249,7 @@ class RNNBasicModel:
         with tf.name_scope("encode_output"):
             layer_1 = tf.add(tf.matmul(concatenated_output_embedded, weights["W1"]), biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
-
+            layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
             layer_2 = tf.nn.relu(layer_2)
 
@@ -476,7 +470,7 @@ class RNNBasicModel:
             # Shape: [batch_size*case_num, operation_selector_dim]
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
-
+            layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             # Max Pooling
             reshaped_layer_1 = tf.transpose(
                 tf.reshape(
@@ -659,12 +653,9 @@ class RNNBasicModel:
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
-        feed_dict[self._rnn_output_keep_prob] = 1. - self._dropout
-        feed_dict[self._rnn_input_keep_prob] = 1. - self._dropout
         feed_dict[self._operation] = batch.operation
-        feed_dict[self._argument_inputs] = batch.argument_inputs
-        feed_dict[self._argument_targets] = batch.argument_targets
         feed_dict[self._learning_rate] = batch.learning_rate
+        feed_dict[self._dnn_keep_prob] = 1. - self._dropout
         return feed_dict
 
     def _build_test_feed(self, batch):
@@ -674,8 +665,7 @@ class RNNBasicModel:
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
-        feed_dict[self._rnn_output_keep_prob] = 1.
-        feed_dict[self._rnn_input_keep_prob] = 1.
+        feed_dict[self._dnn_keep_prob] = 1.
         return feed_dict
 
     def train(self, batch):

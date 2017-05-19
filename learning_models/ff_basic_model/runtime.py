@@ -237,8 +237,8 @@ class ModelRuntime:
                 self.epoch_log(
                     epoch_log_file,
                     num_epoch=epoch,
-                    train_accuracy=train_accuracy,
-                    dev_accuracy=dev_accuracy,
+                    train_accuracy=train_opt_accuracy,
+                    dev_accuracy=dev_operation_accuracy,
                     average_loss=average_loss
                 )
 
