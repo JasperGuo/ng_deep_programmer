@@ -477,6 +477,7 @@ class RNNBasicModel:
 
     def _build_operation_selector(self):
         with tf.variable_scope("operation_selector"):
+            """
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
@@ -488,10 +489,11 @@ class RNNBasicModel:
                 shape=[self._operation_selector_dim],
                 name="bias_1"
             )
+            """
 
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._operation_selector_dim,
+                shape=[self._guide_hidden_dim,
                        self._operation_vocab_manager.vocab_len],
                 name="output_weights"
             )
@@ -503,19 +505,17 @@ class RNNBasicModel:
 
             max_pooling_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._operation_selector_dim,
-                       self._operation_selector_dim],
+                shape=[self._guide_hidden_dim,
+                       self._guide_hidden_dim],
                 name="max_pooling_weights"
             )
 
             weights = {
-                "W1": layer_1_weights,
                 "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
             bias = {
-                "b1": layer_1_bias,
                 "output_b": output_bias
             }
 
@@ -529,17 +529,19 @@ class RNNBasicModel:
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
-        with tf.name_scope("encode_output"):
+        with tf.name_scope("encode_operation"):
             # Shape: [batch_size*case_num, operation_selector_dim]
+            """
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
+            """
             # Max Pooling
             reshaped_layer_1 = tf.transpose(
                 tf.reshape(
                     tf.tanh(
                         tf.matmul(
-                            layer_1,
+                            guide_vector,
                             selector_weights["max_pooling_W"]
                         ),
                     ),
