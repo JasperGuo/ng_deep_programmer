@@ -455,42 +455,18 @@ class RNNBasicModel:
         :param context_vector:          [batch_size*case_num, memory_encoder_layer_2_dim]
         :param encoded_output:          [batch_size*case_num, output_encoder_layer_2_dim]
         :return:
-            [batch_size, guide_hidden_Dim]
+            [batch_size*case_num, guide_hidden_Dim]
         """
-        # Shape: [batch_size, memory_encoder_layer_2_dim]
-        pooled_context_vector = tf.reduce_mean(
-            tf.transpose(
-                tf.reshape(
-                    context_vector,
-                    shape=[self._batch_size, self._case_num, self._memory_encoder_layer_2_dim]
-                ),
-                perm=[0, 2, 1]
-            ),
-            axis=2
-        )
-
-        # Shape: [batch_size, output_encoder_layer_2_dim]
-        pooled_encoded_output = tf.reduce_mean(
-            tf.transpose(
-                tf.reshape(
-                    encoded_output,
-                    shape=[self._batch_size, self._case_num, self._output_encoder_layer_2_dim]
-                ),
-                perm=[0, 2, 1]
-            ),
-            axis=2
-        )
-
         return tf.nn.relu(
             tf.add(
                 tf.add(
                     tf.matmul(
-                        pooled_context_vector,
+                        context_vector,
                         guide_context_weights,
                         transpose_b=True
                     ),
                     tf.matmul(
-                        pooled_encoded_output,
+                        encoded_output,
                         guide_output_weights,
                         transpose_b=True
                     )
@@ -568,10 +544,20 @@ class RNNBasicModel:
                 axis=2
             )
             """
-            output_layer = tf.add(tf.matmul(guide_vector, selector_weights["output_W"]),
-                                  selector_biases["output_b"])
+            # Shape: [batch_size, operation_vocab_len]
+            output_layer = tf.reduce_sum(
+                tf.transpose(
+                    tf.reshape(
+                        tf.add(tf.matmul(guide_vector, selector_weights["output_W"]),
+                               selector_biases["output_b"]),
+                        shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
+                    ),
+                    perm=[0, 2, 1]
+                ),
+                axis=2
+            )
 
-            # Shape: [batch_size*case_num, operation_vocab_len]
+            # Shape: [batch_size operation_vocab_len]
             softmax_output = tf.nn.softmax(output_layer)
 
             selection = tf.arg_max(softmax_output, dimension=1)
