@@ -477,9 +477,22 @@ class RNNBasicModel:
 
     def _build_operation_selector(self):
         with tf.variable_scope("operation_selector"):
-            output_weights = tf.get_variable(
+
+            layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
+                       self._operation_selector_dim],
+                name="weights_1"
+            )
+            layer_1_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._operation_selector_dim],
+                name="bias_1"
+            )
+
+            output_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_selector_dim,
                        self._operation_vocab_manager.vocab_len],
                 name="output_weights"
             )
@@ -498,11 +511,13 @@ class RNNBasicModel:
             """
 
             weights = {
+                "W1": layer_1_weights,
                 # "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
             bias = {
+                "b1": layer_1_bias,
                 "output_b": output_bias
             }
 
@@ -518,11 +533,10 @@ class RNNBasicModel:
         """
         with tf.name_scope("encode_operation"):
             # Shape: [batch_size*case_num, operation_selector_dim]
-            """
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
-            """
+
             # Max Pooling
             """
             reshaped_layer_1 = tf.transpose(
@@ -544,11 +558,12 @@ class RNNBasicModel:
                 axis=2
             )
             """
+
             # Shape: [batch_size, operation_vocab_len]
             output_layer = tf.reduce_sum(
                 tf.transpose(
                     tf.reshape(
-                        tf.add(tf.matmul(guide_vector, selector_weights["output_W"]),
+                        tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
                                selector_biases["output_b"]),
                         shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
                     ),
