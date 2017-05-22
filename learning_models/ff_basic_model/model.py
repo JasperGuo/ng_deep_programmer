@@ -477,6 +477,7 @@ class RNNBasicModel:
 
     def _build_operation_selector(self):
         with tf.variable_scope("operation_selector"):
+
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
@@ -501,16 +502,8 @@ class RNNBasicModel:
                 name="output_bias"
             )
 
-            max_pooling_weights = tf.get_variable(
-                initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._operation_selector_dim,
-                       self._operation_selector_dim],
-                name="max_pooling_weights"
-            )
-
             weights = {
                 "W1": layer_1_weights,
-                "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
@@ -529,33 +522,23 @@ class RNNBasicModel:
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
-        with tf.name_scope("encode_output"):
+        with tf.name_scope("encode_operation"):
             # Shape: [batch_size*case_num, operation_selector_dim]
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
-            # Max Pooling
-            reshaped_layer_1 = tf.transpose(
-                tf.reshape(
-                    tf.tanh(
-                        tf.matmul(
-                            layer_1,
-                            selector_weights["max_pooling_W"]
-                        ),
-                    ),
-                    shape=[self._batch_size, self._case_num, self._operation_selector_dim]
-                ),
-                perm=[0, 2, 1]
-            )
 
-            # Shape: [batch_size, operation_selector_dim]
-            max_pooling_result = tf.reduce_max(
-                reshaped_layer_1,
+            output_layer = tf.reduce_sum(
+                tf.transpose(
+                    tf.reshape(
+                        tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
+                               selector_biases["output_b"]),
+                        shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
+                    ),
+                    perm=[0, 2, 1]
+                ),
                 axis=2
             )
-
-            output_layer = tf.add(tf.matmul(max_pooling_result, selector_weights["output_W"]),
-                                  selector_biases["output_b"])
 
             softmax_output = tf.nn.softmax(output_layer)
             selection = tf.arg_max(softmax_output, dimension=1)

@@ -93,7 +93,43 @@ class ModelRuntime:
             f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (num_epoch, train_accuracy, dev_accuracy, average_loss))
 
     def log(self, file, batch, operation_predictions, argument_predictions):
-        pass
+        with open(file, "a") as f:
+            string = list()
+            for i in range(batch.batch_size):
+                predicted_opt = self._operation_vocab.id2word(operation_predictions[i])
+                truth_opt = self._operation_vocab.id2word(batch.operation[i])
+                args = batch.argument_targets[i]
+                if args[0] > self._max_memory_size:
+                    args[0] = self._lambda_vocab.id2word(args[0] - self._max_memory_size)
+
+                _string = [
+                    "Predicted Opt: %s" % predicted_opt,
+                    "Truth Opt: %s" % truth_opt,
+                    "args: %s" % str(args)
+                ]
+
+                for case_id in range(self._case_num):
+                    _string.append("case_id: %d" % case_id)
+                    memory = list()
+                    memory_size = batch.memory_size[i+case_id]
+                    for j in range(self._max_memory_size):
+                        memory_idx = (i+case_id)*self._max_memory_size + j
+                        m = batch.memory_entry_value[memory_idx]
+                        _m = [self._digit_vocab.id2word(_) for _ in m if _ != VocabManager.PAD_TOKEN_ID]
+                        memory.append(_m)
+                    output = [self._digit_vocab.id2word(_) for _ in batch.output_value[i+case_id] if _ != VocabManager.PAD_TOKEN_ID]
+                    _string.append("Output: %s" % str(output))
+                    _string.append("Memory Size: %s" % str(memory_size))
+                    _string.append("Memory:")
+                    _string.append('\n'.join([str(i) + ": " + str(m) for (i, m) in enumerate(memory)]))
+                    _string.append("************************")
+
+                _string.append("====================================================")
+                _string.append("\n")
+
+                s = '\n'.join(_string)
+                string.append(s)
+            f.write("\n".join(string))
 
     def init_session(self, checkpoint=None):
         self._session = tf.Session()
@@ -160,6 +196,7 @@ class ModelRuntime:
         correct = 0
         operation_correct = 0
         argument_correct = 0
+        file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + ".log")
         for i in tqdm(range(data_iterator.batch_per_epoch)):
             batch = data_iterator.get_batch()
             operations, feed_dict = self._test_model.predict(batch)
@@ -179,14 +216,22 @@ class ModelRuntime:
 
             total += batch.batch_size
 
+            if is_log:
+                self.log(
+                    file=file,
+                    operation_predictions=operations,
+                    batch=batch,
+                    argument_predictions=arguments
+                )
+
         accuracy = float(correct)/float(total)
-        operation_accuracy =float(operation_correct)/float(total)
+        operation_accuracy = float(operation_correct)/float(total)
         argument_accuracy = float(argument_correct)/float(total)
         return accuracy, operation_accuracy, argument_accuracy
 
     def train(self):
         try:
-            best_accuracy = 0
+            best_operation_accuracy = 0
             last_updated_epoch = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
             curr_learning_rate = self._default_learning_rate
@@ -228,9 +273,9 @@ class ModelRuntime:
                 tqdm.write(", ".join(['Dev', "accuracy: %f, opt_accuracy: %f, arg_accuracy: %f" % (dev_accuracy, dev_operation_accuracy, dev_arg_accuracy)]))
                 tqdm.write("=================================================================")
 
-                if dev_accuracy > best_accuracy:
+                if dev_operation_accuracy > best_operation_accuracy:
                     self._saver.save(self._session, self._best_checkpoint_file)
-                    best_accuracy = dev_accuracy
+                    best_operation_accuracy = dev_operation_accuracy
 
                 self.epoch_log(
                     epoch_log_file,

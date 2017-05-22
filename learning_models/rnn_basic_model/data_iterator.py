@@ -74,7 +74,7 @@ class Batch:
 
     @property
     def batch_size(self):
-        return len(self.output_value)
+        return len(self.operation)
 
     def _print(self):
         print("Output Value: ")
