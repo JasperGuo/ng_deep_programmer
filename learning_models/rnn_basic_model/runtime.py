@@ -300,7 +300,7 @@ class ModelRuntime:
         if is_test:
 
             self._test_data_iterator = DataIterator(
-                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["train_file"])),
+                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["test_file"])),
                 digit_vocab=self._digit_vocab,
                 data_type_vocab=self._data_type_vocab,
                 operation_vocab=self._operation_vocab,
