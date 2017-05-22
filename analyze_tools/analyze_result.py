@@ -54,6 +54,10 @@ def main(file):
     total = 0
     correct_count = 0
     error_count = 0
+
+    error_opt_count = dict()
+    correct_opt_count = dict()
+
     for r in result:
         predicted_opt = r["predicted_opt"]
         truth_opt = r["truth_opt"]
@@ -64,9 +68,18 @@ def main(file):
         if predicted_opt != truth_opt:
             _dict = error_dict
             error_count += 1
+
+            if truth_opt not in error_opt_count:
+                error_opt_count[truth_opt] = 0
+            error_opt_count[truth_opt] += 1
+
         else:
             _dict = correct_dict
             correct_count += 1
+
+            if truth_opt not in correct_opt_count:
+                correct_opt_count[truth_opt] = 0
+            correct_opt_count[truth_opt] += 1
 
         if memory_size not in _dict:
             _dict[memory_size] = {
@@ -78,6 +91,15 @@ def main(file):
         _dict[memory_size]["detail"][truth_opt] += 1
         _dict[memory_size]["total"] += 1
 
+    """
+    for opt, value in error_opt_count.items():
+        error_opt_count[opt] = round(float(value)/float(error_count), 2)
+    """
+
+    size_dict = dict()
+    for (size, value) in error_dict.items():
+        size_dict[size] = round(float(value["total"])/float(error_count), 2)
+
     print("Total: %d" % total)
     print("Correct Total: %d" % correct_count)
     print("Error Total:   %d" % error_count)
@@ -85,7 +107,17 @@ def main(file):
     print("Correct: ")
     pprint(correct_dict)
     print("\n")
+    print("Error: ")
     pprint(error_dict)
+
+    print("\nError Opt: ")
+    pprint(error_opt_count)
+
+    print("\nCorrect Opt: ")
+    pprint(correct_opt_count)
+
+    print("\nError Memory Size: ")
+    pprint(size_dict)
 
 
 if __name__ == "__main__":

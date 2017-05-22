@@ -94,7 +94,7 @@ class ModelRuntime:
         with open(file, "a") as f:
             f.write("epoch: %d, train_accuracy: %f, dev_accuracy: %f, average_loss: %f\n" % (num_epoch, train_accuracy, dev_accuracy, average_loss))
 
-    def log(self, file, batch, operation_predictions, argument_predictions):
+    def log(self, file, batch, operation_predictions, argument_predictions, attention_weights):
         with open(file, "a") as f:
             string = list()
             for i in range(batch.batch_size):
@@ -113,15 +113,17 @@ class ModelRuntime:
                 for case_id in range(self._case_num):
                     _string.append("case_id: %d" % case_id)
                     memory = list()
-                    memory_size = batch.memory_size[i+case_id]
+                    base_idx = i*self._case_num + case_id
+                    memory_size = batch.memory_size[base_idx]
                     for j in range(self._max_memory_size):
-                        memory_idx = (i+case_id)*self._max_memory_size + j
+                        memory_idx = base_idx*self._max_memory_size + j
                         m = batch.memory_entry_value[memory_idx]
                         _m = [self._digit_vocab.id2word(_) for _ in m if _ != VocabManager.PAD_TOKEN_ID]
                         memory.append(_m)
-                    output = [self._digit_vocab.id2word(_) for _ in batch.output_value[i+case_id] if _ != VocabManager.PAD_TOKEN_ID]
+                    output = [self._digit_vocab.id2word(_) for _ in batch.output_value[base_idx] if _ != VocabManager.PAD_TOKEN_ID]
                     _string.append("Output: %s" % str(output))
                     _string.append("Memory Size: %s" % str(memory_size))
+                    _string.append("Memory Attention: %s" % str(attention_weights[base_idx]))
                     _string.append("Memory:")
                     _string.append('\n'.join([str(i) + ": " + str(m) for (i, m) in enumerate(memory)]))
                     _string.append("************************")
@@ -201,8 +203,8 @@ class ModelRuntime:
         file = os.path.join(self._result_log_base_path, "test_" + self._curr_time + ".log")
         for i in tqdm(range(data_iterator.batch_per_epoch)):
             batch = data_iterator.get_batch()
-            operations, feed_dict = self._test_model.predict(batch)
-            operations = self._session.run(operations, feed_dict=feed_dict)
+            operations, attention_weights, feed_dict = self._test_model.predict(batch)
+            operations, attention_weights = self._session.run((operations, attention_weights,), feed_dict=feed_dict)
 
             arguments = np.array([[0] * self._max_argument_num] * batch.batch_size)
             batch_correct, batch_operation_correct, batch_argument_correct = self._calc_batch_accuracy(
@@ -223,7 +225,8 @@ class ModelRuntime:
                     file=file,
                     operation_predictions=operations,
                     batch=batch,
-                    argument_predictions=arguments
+                    argument_predictions=arguments,
+                    attention_weights=attention_weights
                 )
 
         accuracy = float(correct)/float(total)
@@ -247,9 +250,9 @@ class ModelRuntime:
                 for i in tqdm(range(self._train_data_iterator.batch_per_epoch)):
                     batch = self._train_data_iterator.get_batch()
                     batch.learning_rate = curr_learning_rate
-                    operations, loss, optimizer, feed_dict = self._train_model.train(batch)
-                    operations, loss, optimizer = self._session.run((
-                        operations, loss, optimizer,
+                    operations, attention_weights, loss, optimizer, feed_dict = self._train_model.train(batch)
+                    operations, attention_weights, loss, optimizer = self._session.run((
+                        operations, attention_weights, loss, optimizer,
                     ), feed_dict=feed_dict)
                     losses.append(loss)
                     arguments = np.array([[0]*self._max_argument_num]*batch.batch_size)

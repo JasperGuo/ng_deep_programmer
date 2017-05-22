@@ -422,7 +422,8 @@ class RNNBasicModel:
                 attention_bias["context_activate_bias"]
             )
         )
-        return attentive_context_vector
+
+        return attentive_context_vector, normalized_weights
 
     def _build_guide_layer(self):
         with tf.variable_scope("guide"):
@@ -570,7 +571,7 @@ class RNNBasicModel:
 
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
-        attentive_context_vector = self._calc_memory_output_attention(
+        attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
             encoded_memory=encoded_memory,
@@ -661,7 +662,7 @@ class RNNBasicModel:
 
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
-        attentive_context_vector = self._calc_memory_output_attention(
+        attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
             encoded_memory=encoded_memory,
@@ -715,9 +716,9 @@ class RNNBasicModel:
     def train(self, batch):
         assert not self._is_test
         feed_dict = self._build_train_feed(batch)
-        return self._operation_prediction, self._loss, self._optimizer, feed_dict
+        return self._operation_prediction, self._attentive_context_weights, self._loss, self._optimizer, feed_dict
 
     def predict(self, batch):
         feed_dict = self._build_test_feed(batch)
-        return self._operation_prediction, feed_dict
+        return self._operation_prediction, self._attentive_context_weights, feed_dict
 
