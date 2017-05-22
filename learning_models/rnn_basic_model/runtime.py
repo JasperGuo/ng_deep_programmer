@@ -156,7 +156,7 @@ class ModelRuntime:
                 self._session.run(init)
             else:
                 self._saver.restore(self._session, checkpoint)
-                self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
+            self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
 
     def _calc_batch_accuracy(self, operation_predictions, argument_predictions, truth_operations, truth_arguments):
         """
