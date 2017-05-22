@@ -518,7 +518,7 @@ class RNNBasicModel:
         """
         :param selector_weights:
         :param selector_biases:
-        :param guide_vector: [batch_size, guide_hidden_dim]
+        :param guide_vector: [batch_size*case_num, guide_hidden_dim]
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
