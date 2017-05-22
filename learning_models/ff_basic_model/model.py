@@ -79,10 +79,14 @@ class RNNBasicModel:
             self._memory_entry_value = tf.placeholder(tf.int32,
                                                       [self._batch_with_case_and_memory_size, self._max_value_size],
                                                       name="memory_entry_value")
+            self._memory_entry_value_size = tf.placeholder(tf.int32,
+                                                          [self._batch_with_case_and_memory_size],
+                                                          name="memory_entry_value_size")
             self._memory_size = tf.placeholder(tf.int32, [self._batch_with_case_size], name="memory_size")
             self._output_data_type = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_data_type")
             self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size],
                                                 name="output_value")
+            self._output_value_size = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_value_size")
             self._dnn_keep_prob = tf.placeholder(tf.float32, name="dnn_keep_prob")
 
             if not self._is_test:
@@ -123,6 +127,97 @@ class RNNBasicModel:
             digit_embedding = tf.concat([pad_embedding, digit_embedding], axis=0)
 
         return data_type_embedding, digit_embedding
+
+    def _calc_position_embedding(self, value_size, shape_0):
+        """
+        Calculate Position Embedding
+        :param value_size: [shape_0]
+        :return:
+            [shape_0, max_value_size, digit_embedding_dim]
+        """
+
+        # Prevent divided by 0
+        _value_size = tf.add(tf.cast(tf.equal(value_size, 0), dtype=tf.int32), value_size)
+
+        # j/J
+        j = tf.cast(tf.add(tf.range(self._max_value_size), 1), dtype=tf.float32)
+        # Shape: [shape_0, max_value_size]
+        replicated_j = tf.reshape(
+            tf.tile(
+                j,
+                [shape_0]
+            ),
+            shape=[shape_0, self._max_value_size]
+        )
+
+        # Shape: [shape_0, 1]
+        size_mask = tf.reshape(
+            value_size,
+            shape=[shape_0, 1]
+        )
+        # Shape: [shape_0, max_value_size]
+        template = tf.reshape(
+            tf.tile(
+                tf.range(self._max_value_size),
+                [shape_0]
+            ),
+            shape=[shape_0, self._max_value_size]
+        )
+        size_mask = tf.cast(
+            tf.less(
+                template, size_mask
+            ),
+            dtype=tf.float32
+        )
+        # Shape: [shape_0, max_value_size]
+        position = tf.multiply(
+            tf.div(
+                replicated_j,
+                tf.cast(
+                    tf.reshape(
+                        _value_size,
+                        shape=[shape_0, 1]
+                    ),
+                    dtype=tf.float32
+                )
+            ),
+            size_mask
+        )
+
+        k_value = tf.cast(tf.add(tf.range(self._digit_embedding_dim), 1), dtype=tf.float32)
+        k_d_value = tf.div(k_value, tf.constant(self._digit_embedding_dim, dtype=tf.float32))
+
+        x = tf.subtract(
+            tf.constant(1, dtype=tf.float32),
+            k_d_value
+        )
+
+        result = tf.reshape(
+            tf.subtract(
+                x,
+                tf.multiply(
+                    tf.reshape(position, shape=[shape_0 * self._max_value_size, 1]),
+                    tf.subtract(
+                        tf.constant(1, dtype=tf.float32),
+                        tf.multiply(
+                            tf.constant(2, dtype=tf.float32),
+                            k_d_value
+                        )
+                    )
+                )
+            ),
+            shape=[shape_0, self._max_value_size, self._digit_embedding_dim]
+        )
+
+        result = tf.multiply(
+            result,
+            tf.reshape(
+                size_mask,
+                shape=[shape_0, self._max_value_size, 1]
+            )
+        )
+
+        return result
 
     def _build_memory_encoder(self):
         with tf.variable_scope("memory_encoder"):
@@ -200,20 +295,27 @@ class RNNBasicModel:
 
             return weights, bias
 
-    def _encode_memory(self, weights, biases, data_type_embedded, value_embedded):
+    def _encode_memory(self, weights, biases, data_type_embedded, value_embedded, value_size):
         """
         Encode memory entry
         :param weights:
         :param biases:
         :param data_type_embedded: [batch_size*case_num*max_memory_size, data_type_embedding_dim]
         :param value_embedded:     [batch_size*case_num*max_memory_size, max_value_size, digit_embedding_dim]
+        :param value_size:         [batch_size*case_num*max_memory_size]
         :return:
             [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
         """
-        # Shape: [batch_size*case_num*max_memory_size, max_value_size*digit_embedding+data_type_embedding_dim]
+        # Shape:  [batch_size*case_num*max_memory_size, max_value_size, digit_embedding_dim]
+        position_embedding = self._calc_position_embedding(value_size, shape_0=self._batch_with_case_and_memory_size)
+        position_augmented_value_embedding = tf.add(
+            value_embedded, position_embedding
+        )
+
+        # Shape: [batch_size*case_max_memory_size, max_value_size*digit_embedding+data_type_embedding_dim]
         concatenated_memory_entry_embedded = tf.concat(
             (
-                tf.reshape(value_embedded, shape=[self._batch_with_case_and_memory_size,
+                tf.reshape(position_augmented_value_embedding, shape=[self._batch_with_case_and_memory_size,
                                                   self._max_value_size * self._digit_embedding_dim]),
                 data_type_embedded
             ),
@@ -228,20 +330,26 @@ class RNNBasicModel:
 
             return layer_2
 
-    def _encode_output(self, weights, biases, data_type_embedded, value_embedded):
+    def _encode_output(self, weights, biases, data_type_embedded, value_embedded, value_size):
         """
         Encode output
         :param weights:
         :param biases:
         :param data_type_embedded: [batch_size*case_num, data_type_embedding_dim]
         :param value_embedded:     [batch_size*case_num, max_value_size, data_type_embedding_dim]
+        :param value_size:         [batch_size*case_num*max_memory_size]
         :return:
             [batch_size*case_num, output_encoder_layer_2_dim]
         """
+        # Shape:  [batch_size*case_num, max_value_size, digit_embedding_dim]
+        position_embedding = self._calc_position_embedding(value_size, shape_0=self._batch_with_case_size)
+        position_augmented_value_embedding = tf.add(
+            value_embedded, position_embedding
+        )
         # Shape: [batch_size*case_num, max_value_size*data_type_embedding_dim]
         concatenated_output_embedded = tf.concat(
             (
-                tf.reshape(value_embedded,
+                tf.reshape(position_augmented_value_embedding,
                            shape=[self._batch_with_case_size, self._max_value_size * self._digit_embedding_dim]),
                 data_type_embedded
             ),
@@ -325,9 +433,13 @@ class RNNBasicModel:
             [batch_size*case_num*max_memory_size]
         """
         feature_1 = tf.multiply(encoded_memory, encoded_output)
-        feature_2 = tf.abs(tf.subtract(encoded_memory, encoded_output))
+        # feature_2 = tf.abs(tf.subtract(encoded_memory, encoded_output))
 
-        feature = tf.concat([feature_1, feature_2], axis=1)
+        # Feature 3, capture the reverse order
+        reversed_memory = tf.reverse(encoded_memory, axis=[-1])
+        feature_3 = tf.multiply(reversed_memory, encoded_output)
+
+        feature = tf.concat([feature_1, feature_3], axis=1)
 
         layer_1 = tf.tanh(
             tf.add(
@@ -565,9 +677,11 @@ class RNNBasicModel:
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
-                                             memory_entry_data_type_embedded, memory_entry_value_embedded)
+                                             memory_entry_data_type_embedded, memory_entry_value_embedded,
+                                             self._memory_entry_value_size)
         encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
-                                             output_value_embedded)
+                                             output_value_embedded,
+                                             self._output_value_size)
 
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
@@ -656,9 +770,11 @@ class RNNBasicModel:
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
-                                             memory_entry_data_type_embedded, memory_entry_value_embedded)
+                                             memory_entry_data_type_embedded, memory_entry_value_embedded,
+                                             self._memory_entry_value_size)
         encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
-                                             output_value_embedded)
+                                             output_value_embedded,
+                                             self._output_value_size)
 
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
@@ -695,9 +811,11 @@ class RNNBasicModel:
         feed_dict = dict()
         feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
         feed_dict[self._memory_entry_value] = batch.memory_entry_value
+        feed_dict[self._memory_entry_value_size] = batch.memory_entry_value_size
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
+        feed_dict[self._output_value_size] = batch.output_value_size
         feed_dict[self._operation] = batch.operation
         feed_dict[self._learning_rate] = batch.learning_rate
         feed_dict[self._dnn_keep_prob] = 1. - self._dropout
@@ -707,9 +825,11 @@ class RNNBasicModel:
         feed_dict = dict()
         feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
         feed_dict[self._memory_entry_value] = batch.memory_entry_value
+        feed_dict[self._memory_entry_value_size] = batch.memory_entry_value_size
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
+        feed_dict[self._output_value_size] = batch.output_value_size
         feed_dict[self._dnn_keep_prob] = 1.
         return feed_dict
 
