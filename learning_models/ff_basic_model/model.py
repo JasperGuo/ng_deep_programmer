@@ -501,18 +501,9 @@ class RNNBasicModel:
                 shape=[self._operation_vocab_manager.vocab_len],
                 name="output_bias"
             )
-            """
-            max_pooling_weights = tf.get_variable(
-                initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._guide_hidden_dim,
-                       self._guide_hidden_dim],
-                name="max_pooling_weights"
-            )
-            """
 
             weights = {
                 "W1": layer_1_weights,
-                # "max_pooling_W": max_pooling_weights,
                 "output_W": output_weights
             }
 
@@ -537,29 +528,6 @@ class RNNBasicModel:
             layer_1 = tf.nn.relu(layer_1)
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
 
-            # Max Pooling
-            """
-            reshaped_layer_1 = tf.transpose(
-                tf.reshape(
-                    tf.tanh(
-                        tf.matmul(
-                            guide_vector,
-                            selector_weights["max_pooling_W"]
-                        ),
-                    ),
-                    shape=[self._batch_size, self._case_num, self._guide_hidden_dim]
-                ),
-                perm=[0, 2, 1]
-            )
-
-            # Shape: [batch_size, guide_hidden_dim]
-            max_pooling_result = tf.reduce_mean(
-                reshaped_layer_1,
-                axis=2
-            )
-            """
-
-            # Shape: [batch_size, operation_vocab_len]
             output_layer = tf.reduce_sum(
                 tf.transpose(
                     tf.reshape(
@@ -572,9 +540,7 @@ class RNNBasicModel:
                 axis=2
             )
 
-            # Shape: [batch_size operation_vocab_len]
             softmax_output = tf.nn.softmax(output_layer)
-
             selection = tf.arg_max(softmax_output, dimension=1)
 
             return softmax_output, selection

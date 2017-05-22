@@ -188,7 +188,7 @@ class ModelRuntime:
 
     def train(self):
         try:
-            best_accuracy = 0
+            best_operation_accuracy = 0
             last_updated_epoch = 0
             epoch_log_file = os.path.join(self._result_log_base_path, "epoch_result.log")
             curr_learning_rate = self._default_learning_rate
@@ -230,9 +230,9 @@ class ModelRuntime:
                 tqdm.write(", ".join(['Dev', "accuracy: %f, opt_accuracy: %f, arg_accuracy: %f" % (dev_accuracy, dev_operation_accuracy, dev_arg_accuracy)]))
                 tqdm.write("=================================================================")
 
-                if dev_accuracy > best_accuracy:
+                if dev_operation_accuracy > best_operation_accuracy:
                     self._saver.save(self._session, self._best_checkpoint_file)
-                    best_accuracy = dev_accuracy
+                    best_operation_accuracy = dev_operation_accuracy
 
                 self.epoch_log(
                     epoch_log_file,
