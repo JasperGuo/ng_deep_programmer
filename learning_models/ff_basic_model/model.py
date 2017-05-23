@@ -1,6 +1,7 @@
 # coding=utf8
 
 import sys
+
 sys.path.insert(0, "..")
 
 import tensorflow as tf
@@ -80,8 +81,8 @@ class RNNBasicModel:
                                                       [self._batch_with_case_and_memory_size, self._max_value_size],
                                                       name="memory_entry_value")
             self._memory_entry_value_size = tf.placeholder(tf.int32,
-                                                          [self._batch_with_case_and_memory_size],
-                                                          name="memory_entry_value_size")
+                                                           [self._batch_with_case_and_memory_size],
+                                                           name="memory_entry_value_size")
             self._memory_size = tf.placeholder(tf.int32, [self._batch_with_case_size], name="memory_size")
             self._output_data_type = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_data_type")
             self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size],
@@ -316,7 +317,7 @@ class RNNBasicModel:
         concatenated_memory_entry_embedded = tf.concat(
             (
                 tf.reshape(position_augmented_value_embedding, shape=[self._batch_with_case_and_memory_size,
-                                                  self._max_value_size * self._digit_embedding_dim]),
+                                                                      self._max_value_size * self._digit_embedding_dim]),
                 data_type_embedded
             ),
             axis=1
@@ -380,7 +381,7 @@ class RNNBasicModel:
             )
             score_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._memory_encoder_layer_2_dim*2,
+                shape=[self._memory_encoder_layer_2_dim * 2,
                        self._output_encoder_layer_2_dim],
                 name="score_weights_1"
             )
@@ -590,7 +591,6 @@ class RNNBasicModel:
 
     def _build_operation_selector(self):
         with tf.variable_scope("operation_selector"):
-
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
@@ -673,13 +673,13 @@ class RNNBasicModel:
         output_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._output_value)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
@@ -766,13 +766,13 @@ class RNNBasicModel:
         output_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._output_value)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(output_encoder_weights, output_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
@@ -841,4 +841,3 @@ class RNNBasicModel:
     def predict(self, batch):
         feed_dict = self._build_test_feed(batch)
         return self._operation_prediction, self._attentive_context_weights, feed_dict
-
