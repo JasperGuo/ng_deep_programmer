@@ -115,17 +115,20 @@ class ModelRuntime:
                     memory = list()
                     base_idx = i*self._case_num + case_id
                     memory_size = batch.memory_size[base_idx]
+                    memory_value_type = list()
                     for j in range(self._max_memory_size):
                         memory_idx = base_idx*self._max_memory_size + j
                         m = batch.memory_entry_value[memory_idx]
+                        memory_value_type.append(self._data_type_vocab.id2word(batch.memory_entry_data_type[memory_idx]))
                         _m = [self._digit_vocab.id2word(_) for _ in m if _ != VocabManager.PAD_TOKEN_ID]
                         memory.append(_m)
                     output = [self._digit_vocab.id2word(_) for _ in batch.output_value[base_idx] if _ != VocabManager.PAD_TOKEN_ID]
-                    _string.append("Output: %s" % str(output))
+                    output_data_type = self._data_type_vocab.id2word(batch.output_data_type[base_idx])
+                    _string.append("Output: %s, %s" % (output_data_type, str(output)))
                     _string.append("Memory Size: %s" % str(memory_size))
-                    _string.append("Memory Attention: %s" % str(attention_weights[base_idx]))
+                    # _string.append("Memory Attention: %s" % str(attention_weights[base_idx]))
                     _string.append("Memory:")
-                    _string.append('\n'.join([str(i) + ": " + str(m) for (i, m) in enumerate(memory)]))
+                    _string.append('\n'.join([str(i) + ": %7s, %6s" % (str(np.round(w, 4)), dtype) + ", " + str(m) for w, dtype, (i, m) in zip(attention_weights[base_idx], memory_value_type, enumerate(memory))]))
                     _string.append("************************")
 
                 _string.append("====================================================")

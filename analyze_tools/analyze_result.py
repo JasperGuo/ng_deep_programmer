@@ -70,9 +70,14 @@ def main(file):
             error_count += 1
 
             if truth_opt not in error_opt_count:
-                error_opt_count[truth_opt] = 0
-            error_opt_count[truth_opt] += 1
-
+                error_opt_count[truth_opt] = {
+                    "detail": dict(),
+                    "total": 0
+                }
+            if predicted_opt not in error_opt_count[truth_opt]["detail"]:
+                error_opt_count[truth_opt]["detail"][predicted_opt] = 0
+            error_opt_count[truth_opt]["detail"][predicted_opt] += 1
+            error_opt_count[truth_opt]["total"] += 1
         else:
             _dict = correct_dict
             correct_count += 1
