@@ -863,11 +863,11 @@ class FFContextModel:
             vars = tf.trainable_variables()
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
                                if 'bias' not in v.name]) * 0.001
-            self._loss = tf.negative(
-                tf.add(
+            self._loss = tf.add(
+                tf.negative(
                     tf.reduce_mean(log_probs),
-                    l2_loss
-                )
+                ),
+                l2_loss
             )
 
         with tf.name_scope("back_propagation"):
