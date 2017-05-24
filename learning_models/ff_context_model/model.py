@@ -65,9 +65,6 @@ class FFContextModel:
 
         self._gradient_clip = util.get_value(opts, "gradient_clip", 5)
 
-        # Regularization term
-        self._regularization_terms = list()
-
         if self._is_test:
             self._build_test_graph()
         else:
@@ -663,6 +660,7 @@ class FFContextModel:
                 shape=[self._guide_hidden_dim],
                 name="bias"
             )
+
             return attentive_context_weights, output_weights, bias
 
     def _calc_guide_vector(self, guide_context_weights, guide_output_weights, guide_bias, context_vector,
@@ -862,8 +860,14 @@ class FFContextModel:
             # [batch_size]
             log_probs = tf.log(truth_operations_probs)
 
+            vars = tf.trainable_variables()
+            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
+                               if 'bias' not in v.name]) * 0.001
             self._loss = tf.negative(
-                tf.reduce_mean(log_probs)
+                tf.add(
+                    tf.reduce_mean(log_probs),
+                    l2_loss
+                )
             )
 
         with tf.name_scope("back_propagation"):
