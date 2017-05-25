@@ -598,7 +598,7 @@ class FFContextModel:
                             weights["operation_src_2_weights"]
                         ),
                         tf.matmul(
-                            source_1,
+                            source_2,
                             weights["source_2_weights"]
                         )
                     ),
