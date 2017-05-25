@@ -399,11 +399,20 @@ class FFContextModel:
 
     def _build_context_encoder(self):
         with tf.variable_scope("context_weights"):
-            operation_weights = tf.get_variable(
+
+            # Gated Context Encoder
+            operation_src_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._operation_embedding_dim,
                        self._memory_encoder_layer_2_dim],
-                name="operation_weights"
+                name="operation_src_1_weights"
+            )
+
+            operation_src_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="operation_src_2_weights"
             )
 
             source_1_weights = tf.get_variable(
@@ -420,23 +429,37 @@ class FFContextModel:
                 name="source_2_weights"
             )
 
-            bias = tf.get_variable(
+            update_gate_src_1_bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
                 shape=[self._memory_encoder_layer_2_dim],
-                name="bias"
+                name="update_gate_scr_1_bias"
             )
 
-            layer_2_weights = tf.get_variable(
+            update_gate_scr_2_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="update_gate_scr_2_bias"
+            )
+
+            context_src_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._memory_encoder_layer_2_dim,
                        self._memory_encoder_layer_2_dim],
-                name="layer_2_weights"
+                name="context_src_1_weights"
             )
 
-            layer_2_bias = tf.get_variable(
-                initializer=tf.zeros_initializer(),
-                shape=[self._memory_encoder_layer_2_dim],
-                name="layer_2_bias"
+            context_src_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="context_src_2_weights"
+            )
+
+            context_opt_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="context_opt_weights"
             )
 
             combine_value_weights_1 = tf.get_variable(
@@ -460,18 +483,21 @@ class FFContextModel:
             )
 
             w = {
-                "operation_weights": operation_weights,
+                "operation_src_1_weights": operation_src_1_weights,
+                "operation_src_2_weights": operation_src_2_weights,
                 "source_1_weights": source_1_weights,
                 "source_2_weights": source_2_weights,
-                "layer_2_weights": layer_2_weights,
+                "context_src_1_weights": context_src_1_weights,
+                "context_src_2_weights": context_src_2_weights,
+                "context_opt_weights": context_opt_weights,
                 "combine_value_weights_1": combine_value_weights_1,
                 "combine_value_weights_2": combine_value_weights_2
             }
 
             b = {
-                "bias": bias,
-                "layer_2_bias": layer_2_bias,
-                "combine_value_bias": combine_value_bias
+                "combine_value_bias": combine_value_bias,
+                "update_gate_src_1_bias": update_gate_src_1_bias,
+                "update_gate_src_2_bias": update_gate_scr_2_bias
             }
 
             return w, b
@@ -545,49 +571,85 @@ class FFContextModel:
 
         # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
 
-        layer_1 = tf.nn.relu(
-            tf.add(
-                tf.add_n(
-                    [
+        with tf.name_scope("gated_encode_context"):
+            # Source 1 Gate
+            update_src_1 = tf.sigmoid(
+                tf.add(
+                    tf.add(
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["operation_src_1_weights"]
+                        ),
                         tf.matmul(
                             source_1,
                             weights["source_1_weights"]
-                        ),
-                        tf.matmul(
-                            source_2,
-                            weights["source_2_weights"]
-                        ),
+                        )
+                    ),
+                    bias["update_gate_src_1_bias"]
+                )
+            )
+
+            # Source 2 Gate
+            update_src_2 = tf.sigmoid(
+                tf.add(
+                    tf.add(
                         tf.matmul(
                             memory_embedded_opt,
-                            weights["operation_weights"]
+                            weights["operation_src_2_weights"]
+                        ),
+                        tf.matmul(
+                            source_1,
+                            weights["source_2_weights"]
+                        )
+                    ),
+                    bias["update_gate_src_2_bias"]
+                )
+            )
+
+            # Gated Context
+            # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+            context = tf.tanh(
+                tf.add_n(
+                    [
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["context_opt_weights"]
+                        ),
+                        tf.matmul(
+                            tf.multiply(
+                                update_src_1,
+                                source_1
+                            ),
+                            weights["context_src_1_weights"]
+                        ),
+                        tf.matmul(
+                            tf.multiply(
+                                update_src_2,
+                                source_2
+                            ),
+                            weights["context_src_2_weights"]
                         )
                     ]
-                ),
-                bias["bias"]
+                )
             )
-        )
-        layer_1 = tf.nn.relu(layer_1)
-        layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
 
-        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
-        layer_2 = tf.add(tf.matmul(layer_1, weights["layer_2_weights"]), bias["layer_2_bias"])
-
-        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
-        combined = tf.nn.relu(
-            tf.add(
-                tf.add_n([
-                    tf.matmul(
-                        layer_2,
-                        weights["combine_value_weights_1"]
-                    ),
-                    tf.matmul(
-                        encoded_memory,
-                        weights["combine_value_weights_2"]
-                    )
-                ]),
-                bias["combine_value_bias"]
+        with tf.name_scope("combine_context"):
+            # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+            combined = tf.nn.relu(
+                tf.add(
+                    tf.add_n([
+                        tf.matmul(
+                            context,
+                            weights["combine_value_weights_1"]
+                        ),
+                        tf.matmul(
+                            encoded_memory,
+                            weights["combine_value_weights_2"]
+                        )
+                    ]),
+                    bias["combine_value_bias"]
+                )
             )
-        )
 
         return combined
 
