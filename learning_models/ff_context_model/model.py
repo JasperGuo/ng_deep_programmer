@@ -462,6 +462,19 @@ class FFContextModel:
                 name="context_opt_weights"
             )
 
+            layer_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="layer_2_weights"
+            )
+
+            layer_2_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="layer_2_bias"
+            )
+
             combine_value_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._memory_encoder_layer_2_dim,
@@ -491,13 +504,15 @@ class FFContextModel:
                 "context_src_2_weights": context_src_2_weights,
                 "context_opt_weights": context_opt_weights,
                 "combine_value_weights_1": combine_value_weights_1,
-                "combine_value_weights_2": combine_value_weights_2
+                "combine_value_weights_2": combine_value_weights_2,
+                "layer_2_weights": layer_2_weights
             }
 
             b = {
                 "combine_value_bias": combine_value_bias,
                 "update_gate_src_1_bias": update_gate_src_1_bias,
-                "update_gate_src_2_bias": update_gate_scr_2_bias
+                "update_gate_src_2_bias": update_gate_scr_2_bias,
+                "layer_2_bias": layer_2_bias
             }
 
             return w, b
@@ -633,13 +648,21 @@ class FFContextModel:
                 )
             )
 
+            layer_2 = tf.add(
+                tf.matmul(
+                    context,
+                    weights["layer_2_weights"]
+                ),
+                bias["layer_2_bias"]
+            )
+
         with tf.name_scope("combine_context"):
             # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
             combined = tf.nn.relu(
                 tf.add(
                     tf.add_n([
                         tf.matmul(
-                            context,
+                            layer_2,
                             weights["combine_value_weights_1"]
                         ),
                         tf.matmul(
