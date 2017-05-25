@@ -908,7 +908,7 @@ class FFContextModel:
                                 expanded_embedding
                             )
                         ),
-                        selector_weights["attention_vectors"]
+                        selector_weights["attention_vector"]
                     ),
                     shape=[self._batch_size, self._operation_vocab_manager.vocab_len]
                 )
