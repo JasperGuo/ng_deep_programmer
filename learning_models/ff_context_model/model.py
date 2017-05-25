@@ -284,16 +284,16 @@ class FFContextModel:
         with tf.variable_scope("output_encoder"):
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._data_type_embedding_dim + self._digit_embedding_dim * self._max_value_size,
-                       self._output_encoder_layer_1_dim],
+                shape=[self._output_encoder_layer_2_dim,
+                       self._output_encoder_layer_2_dim],
                 name="weights_1"
             )
             layer_1_bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._output_encoder_layer_1_dim],
+                shape=[self._output_encoder_layer_2_dim],
                 name="bias_1"
             )
-
+            """
             layer_2_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._output_encoder_layer_1_dim,
@@ -305,15 +305,15 @@ class FFContextModel:
                 shape=[self._output_encoder_layer_2_dim],
                 name="bias_2"
             )
-
+            """
             weights = {
                 "W1": layer_1_weights,
-                "W2": layer_2_weights
+                # "W2": layer_2_weights
             }
 
             bias = {
                 "b1": layer_1_bias,
-                "b2": layer_2_bias
+                # "b2": layer_2_bias
             }
 
             return weights, bias
@@ -353,7 +353,7 @@ class FFContextModel:
 
             return layer_2
 
-    def _encode_output(self, weights, biases, data_type_embedded, value_embedded, value_size):
+    def _encode_output(self, weights, biases, projection_weights, projection_bias, data_type_embedded, value_embedded, value_size):
         """
         Encode output
         :param weights:
@@ -385,7 +385,17 @@ class FFContextModel:
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
 
-            return layer_2
+            layer_3 = tf.tanh(
+                tf.add(
+                    tf.matmul(
+                        layer_2,
+                        projection_weights["W1"]
+                    ),
+                    projection_bias["b1"]
+                )
+            )
+
+            return layer_3
 
     def _build_context_encoder(self):
         with tf.variable_scope("context_weights"):
@@ -416,13 +426,52 @@ class FFContextModel:
                 name="bias"
             )
 
+            layer_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="layer_2_weights"
+            )
+
+            layer_2_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="layer_2_bias"
+            )
+
+            combine_value_weights_1 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="combine_value_weights_1"
+            )
+
+            combine_value_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="combine_value_weights_2"
+            )
+
+            combine_value_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="combine_value_bias"
+            )
+
             w = {
                 "operation_weights": operation_weights,
                 "source_1_weights": source_1_weights,
                 "source_2_weights": source_2_weights,
+                "layer_2_weights": layer_2_weights,
+                "combine_value_weights_1": combine_value_weights_1,
+                "combine_value_weights_2": combine_value_weights_2
             }
+
             b = {
-                "bias": bias
+                "bias": bias,
+                "layer_2_bias": layer_2_bias,
+                "combine_value_bias": combine_value_bias
             }
 
             return w, b
@@ -495,44 +544,70 @@ class FFContextModel:
         source_2 = tf.gather_nd(expaned_memory, src2_indices)
 
         # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
-        value = tf.add(
+
+        layer_1 = tf.nn.relu(
             tf.add(
-                tf.add(
+                tf.add_n(
+                    [
+                        tf.matmul(
+                            source_1,
+                            weights["source_1_weights"]
+                        ),
+                        tf.matmul(
+                            source_2,
+                            weights["source_2_weights"]
+                        ),
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["operation_weights"]
+                        )
+                    ]
+                ),
+                bias["bias"]
+            )
+        )
+        layer_1 = tf.nn.relu(layer_1)
+        layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
+
+        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+        layer_2 = tf.add(tf.matmul(layer_1, weights["layer_2_weights"]), bias["layer_2_bias"])
+
+        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+        combined = tf.nn.relu(
+            tf.add(
+                tf.add_n([
                     tf.matmul(
-                        source_1,
-                        weights["source_1_weights"]
+                        layer_2,
+                        weights["combine_value_weights_1"]
                     ),
                     tf.matmul(
-                        source_2,
-                        weights["source_2_weights"]
+                        encoded_memory,
+                        weights["combine_value_weights_2"]
                     )
-                ),
-                tf.matmul(
-                    memory_embedded_opt,
-                    weights["operation_weights"]
-                )
-            ),
-            bias["bias"]
+                ]),
+                bias["combine_value_bias"]
+            )
         )
-        return value
+
+        return combined
 
     def _build_memory_output_attention_layer(self):
         with tf.variable_scope("memory_output_attention"):
             weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._memory_encoder_layer_2_dim*2,
-                       self._memory_encoder_layer_2_dim*2],
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
                 name="weights"
             )
 
             bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._memory_encoder_layer_2_dim*2],
+                shape=[self._memory_encoder_layer_2_dim],
                 name="bias"
             )
             score_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._memory_encoder_layer_2_dim * 2,
+                shape=[self._memory_encoder_layer_2_dim,
                        self._output_encoder_layer_2_dim],
                 name="score_weights_1"
             )
@@ -552,7 +627,7 @@ class FFContextModel:
         """
         Calculate attention score
         :param score_weights:
-        :param encoded_memory: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim*2]
+        :param encoded_memory: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
         :param encoded_output: [batch_size*case_num*max_memory_size, output_encoder_layer_2_dim]
         :return:
             [batch_size*case_num*max_memory_size]
@@ -571,11 +646,11 @@ class FFContextModel:
                                       encoded_output, memory_size):
         """
         Calculate Memory, Output Attention
-        :param encoded_memory:      [batch_size*case_num*memory_size, memory_encoder_layer_2_dim*2]
+        :param encoded_memory:      [batch_size*case_num*memory_size, memory_encoder_layer_2_dim]
         :param encoded_output:      [batch_size*case_num, output_encoder_layer_2_dim]
         :param memory_size:         [batch_size*case_num]
         :return:
-            [batch_size*case_num, memory_encoder_layer_2_dim*2]
+            [batch_size*case_num, memory_encoder_layer_2_dim]
         """
         # Replicate encoded_output
         # Shape: [batch_size*case_num*max_memory_size, output_encoder_layer_2_dim]
@@ -617,9 +692,9 @@ class FFContextModel:
         normalized_weights = models_util.softmax_with_mask(scores, memory_mask)
         reshaped_encoded_memory = tf.reshape(
             encoded_memory,
-            shape=[self._batch_with_case_size, self._max_memory_size, self._memory_encoder_layer_2_dim*2]
+            shape=[self._batch_with_case_size, self._max_memory_size, self._memory_encoder_layer_2_dim]
         )
-        # Shape: [batch_size*case_num, memory_encoder_layer_2_dim*2]
+        # Shape: [batch_size*case_num, memory_encoder_layer_2_dim]
         context_vector = tf.reduce_sum(
             tf.multiply(
                 tf.reshape(
@@ -646,7 +721,7 @@ class FFContextModel:
             attentive_context_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._guide_hidden_dim,
-                       self._memory_encoder_layer_2_dim*2],
+                       self._memory_encoder_layer_2_dim],
                 name="attentive_context_weights"
             )
             output_weights = tf.get_variable(
@@ -778,13 +853,17 @@ class FFContextModel:
         operation_embedded = tf.nn.embedding_lookup(operation_embedding, self._memory_entry_operation)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights,
+                                             output_encoder_weights,
+                                             memory_encoder_biases,
+                                             output_encoder_biases,
+                                             output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
@@ -797,21 +876,12 @@ class FFContextModel:
             memory_entry_src2=self._memory_entry_scr_2,
             memory_embedded_opt=operation_embedded
         )
-        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim*2]
-        context_awared_memory = tf.concat(
-            [
-                encoded_memory,
-                context_encoded_memory
-            ],
-            axis=1
-        )
-
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
-            encoded_memory=context_awared_memory,
+            encoded_memory=context_encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
         )
@@ -896,13 +966,17 @@ class FFContextModel:
         operation_embedded = tf.nn.embedding_lookup(operation_embedding, self._memory_entry_operation)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights,
+                                             output_encoder_weights,
+                                             memory_encoder_biases,
+                                             output_encoder_biases,
+                                             output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
@@ -915,21 +989,12 @@ class FFContextModel:
             memory_entry_src2=self._memory_entry_scr_2,
             memory_embedded_opt=operation_embedded
         )
-        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim*2]
-        context_awared_memory = tf.concat(
-            [
-                encoded_memory,
-                context_encoded_memory
-            ],
-            axis=1
-        )
-
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
-            encoded_memory=context_awared_memory,
+            encoded_memory=context_encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
         )
