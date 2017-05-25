@@ -860,8 +860,8 @@ class FFContextModel:
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
         encoded_output = self._encode_output(memory_encoder_weights,
-                                             output_encoder_weights,
                                              memory_encoder_biases,
+                                             output_encoder_weights,
                                              output_encoder_biases,
                                              output_data_type_embedded,
                                              output_value_embedded,
@@ -973,8 +973,8 @@ class FFContextModel:
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
         encoded_output = self._encode_output(memory_encoder_weights,
-                                             output_encoder_weights,
                                              memory_encoder_biases,
+                                             output_encoder_weights,
                                              output_encoder_biases,
                                              output_data_type_embedded,
                                              output_value_embedded,
