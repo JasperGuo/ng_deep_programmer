@@ -795,14 +795,45 @@ class FFContextModel:
                 name="output_bias"
             )
 
+            attention_weights_1 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_1"
+            )
+
+            attention_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_2"
+            )
+
+            attention_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._operation_embedding_dim],
+                name="attention_bias"
+            )
+
+            attention_vector = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       1],
+                name="attention_weights_2"
+            )
+
             weights = {
                 "W1": layer_1_weights,
-                "output_W": output_weights
+                "output_W": output_weights,
+                "attention_weights_1": attention_weights_1,
+                "attention_weights_2": attention_weights_2,
+                "attention_vector": attention_vector
             }
 
             bias = {
                 "b1": layer_1_bias,
-                "output_b": output_bias
+                "output_b": output_bias,
+                "attention_bias": attention_bias
             }
 
             return weights, bias
@@ -839,10 +870,47 @@ class FFContextModel:
                 # Calculate attention to operation embedding
 
                 # Shape: [batch_size, operation_vocab_len]
-                attention_scores = tf.matmul(
-                    pooled_output_layer,
+
+                weighted_pooled_output_layer = tf.add(
+                    tf.matmul(
+                        pooled_output_layer,
+                        selector_weights["attention_weights_1"]
+                    ),
+                    selector_biases["attention_bias"]
+                )
+
+                weighted_operation_embedding = tf.matmul(
                     operation_embedding,
-                    transpose_b=True
+                    selector_weights["attention_weights_2"]
+                )
+
+                expanded_output_layer = tf.reshape(
+                    tf.tile(
+                        weighted_pooled_output_layer,
+                        [1, self._operation_vocab_manager.vocab_len]
+                    ),
+                    shape=[self._batch_size*self._operation_vocab_manager.vocab_len, self._operation_embedding_dim]
+                )
+
+                expanded_embedding = tf.reshape(
+                    tf.tile(
+                        weighted_operation_embedding,
+                        [1, self._batch_size]
+                    ),
+                    shape=[self._batch_size*self._operation_vocab_manager.vocab_len, self._operation_embedding_dim]
+                )
+
+                attention_scores = tf.reshape(
+                    tf.matmul(
+                        tf.tanh(
+                            tf.add(
+                                expanded_output_layer,
+                                expanded_embedding
+                            )
+                        ),
+                        selector_weights["attention_vectors"]
+                    ),
+                    shape=[self._batch_size, self._operation_vocab_manager.vocab_len]
                 )
 
                 softmax_output = tf.nn.softmax(attention_scores, dim=-1)
