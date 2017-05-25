@@ -819,7 +819,7 @@ class FFContextModel:
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._operation_embedding_dim,
                        1],
-                name="attention_weights_2"
+                name="attention_vector"
             )
 
             weights = {
