@@ -353,7 +353,8 @@ class FFContextModel:
 
             return layer_2
 
-    def _encode_output(self, weights, biases, projection_weights, projection_bias, data_type_embedded, value_embedded, value_size):
+    def _encode_output(self, weights, biases, projection_weights, projection_bias, data_type_embedded, value_embedded,
+                       value_size):
         """
         Encode output
         :param weights:
@@ -870,18 +871,34 @@ class FFContextModel:
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._operation_selector_dim,
-                       self._operation_vocab_manager.vocab_len],
+                       self._operation_embedding_dim],
                 name="output_weights"
             )
             output_bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._operation_vocab_manager.vocab_len],
+                shape=[self._operation_embedding_dim],
                 name="output_bias"
+            )
+
+            attention_weights_1 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_1"
+            )
+
+            attention_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_2"
             )
 
             weights = {
                 "W1": layer_1_weights,
-                "output_W": output_weights
+                "output_W": output_weights,
+                "attention_weights_1": attention_weights_1,
+                "attention_weights_2": attention_weights_2
             }
 
             bias = {
@@ -891,36 +908,56 @@ class FFContextModel:
 
             return weights, bias
 
-    def _select_operation(self, selector_weights, selector_biases, guide_vector):
+    def _select_operation(self, selector_weights, selector_biases, guide_vector, operation_embedding):
         """
         :param selector_weights:
         :param selector_biases:
         :param guide_vector: [batch_size*case_num, guide_hidden_dim]
+        :param operation_embedding: [operation_vocab_len, operation_embedding_dim]
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
-        with tf.name_scope("encode_operation"):
+        with tf.name_scope("select_operation"):
             # Shape: [batch_size*case_num, operation_selector_dim]
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
-            layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
+            output_layer = tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
+                                  selector_biases["output_b"])
 
-            output_layer = tf.reduce_sum(
+            # Shape: [batch_size, operation_embedding_dim]
+            pooled_output_layer = tf.reduce_sum(
                 tf.transpose(
                     tf.reshape(
-                        tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
-                               selector_biases["output_b"]),
-                        shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
+                        output_layer,
+                        shape=[self._batch_size, self._case_num, self._operation_embedding_dim]
                     ),
                     perm=[0, 2, 1]
                 ),
                 axis=2
             )
 
-            softmax_output = tf.nn.softmax(output_layer)
-            selection = tf.arg_max(softmax_output, dimension=1)
+            with tf.name_scope("calc_operation_attention"):
+                # Calculate attention to operation embedding
+                weighted_pooled_output_layer = tf.matmul(
+                    pooled_output_layer,
+                    selector_weights["attention_weights_1"]
+                )
 
-            return softmax_output, selection
+                weighted_operation_embedding = tf.matmul(
+                    operation_embedding,
+                    selector_weights["attention_weights_2"]
+                )
+
+                attention_scores = tf.matmul(
+                    weighted_pooled_output_layer,
+                    weighted_operation_embedding,
+                    transpose_b=True
+                )
+
+                softmax_output = tf.nn.softmax(attention_scores, dim=-1)
+                selection = tf.arg_max(softmax_output, dimension=1)
+
+                return softmax_output, selection
 
     def _build_train_graph(self):
         """
@@ -988,7 +1025,8 @@ class FFContextModel:
         operation_softmax_output, selected_operations = self._select_operation(
             selector_weights=operation_selector_weights,
             selector_biases=operation_selector_biases,
-            guide_vector=guide_vector
+            guide_vector=guide_vector,
+            operation_embedding=operation_embedding
         )
 
         # Prevent inf
@@ -1017,7 +1055,7 @@ class FFContextModel:
 
             vars = tf.trainable_variables()
             l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
-                               if 'bias' not in v.name]) * 0.001
+                                if 'bias' not in v.name]) * 0.001
             self._loss = tf.add(
                 tf.negative(
                     tf.reduce_mean(log_probs),
@@ -1101,7 +1139,8 @@ class FFContextModel:
         operation_softmax_output, selected_operations = self._select_operation(
             selector_weights=operation_selector_weights,
             selector_biases=operation_selector_biases,
-            guide_vector=guide_vector
+            guide_vector=guide_vector,
+            operation_embedding=operation_embedding
         )
         self._operation_prediction = selected_operations
 
