@@ -124,7 +124,7 @@ class ModelRuntime:
                 self._session.run(init)
             else:
                 self._saver.restore(self._session, checkpoint)
-                self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
+            self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
 
     def _calc_batch_accuracy(self, operation_predictions, argument_predictions, truth_operations, truth_arguments):
         """
@@ -259,7 +259,7 @@ class ModelRuntime:
         if is_test:
 
             self._test_data_iterator = DataIterator(
-                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["train_file"])),
+                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["test_file"])),
                 digit_vocab=self._digit_vocab,
                 data_type_vocab=self._data_type_vocab,
                 operation_vocab=self._operation_vocab,

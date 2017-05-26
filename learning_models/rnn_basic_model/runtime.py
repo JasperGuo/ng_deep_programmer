@@ -53,9 +53,15 @@ class ModelRuntime:
 
         self._curr_time = str(int(time.time()))
         self._log_dir = os.path.abspath(self._conf["log_dir"])
+        self._result_log_base_pardir = os.path.abspath(os.path.join(os.path.curdir, self._conf["result_log"]))
+        self._checkpoint_pardir = os.path.abspath(os.path.join(os.path.curdir, self._conf["checkpoint_path"]))
 
-        self._result_log_base_path = os.path.abspath(os.path.join(os.path.curdir, self._conf["result_log"], self._curr_time))
-        self._checkpoint_path = os.path.abspath(os.path.join(os.path.curdir, self._conf["checkpoint_path"], self._curr_time))
+        for path in [self._log_dir, self._result_log_base_pardir, self._checkpoint_pardir]:
+            if not os.path.exists(path):
+                os.mkdir(path)
+
+        self._result_log_base_path = os.path.join(self._result_log_base_pardir, self._curr_time)
+        self._checkpoint_path = os.path.join(self._checkpoint_pardir, self._curr_time)
         self._checkpoint_file = os.path.join(os.path.curdir, self._checkpoint_path, "tf_checkpoint")
         self._best_checkpoint_file = os.path.join(os.path.curdir, self._checkpoint_path, "tf_best_checkpoint")
 
@@ -156,7 +162,7 @@ class ModelRuntime:
                 self._session.run(init)
             else:
                 self._saver.restore(self._session, checkpoint)
-                self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
+            self._file_writer = tf.summary.FileWriter(self._log_dir, self._session.graph)
 
     def _calc_batch_accuracy(self, operation_predictions, argument_predictions, truth_operations, truth_arguments):
         """
@@ -300,7 +306,7 @@ class ModelRuntime:
         if is_test:
 
             self._test_data_iterator = DataIterator(
-                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["train_file"])),
+                data_path=os.path.abspath(os.path.join(self._base_path, self._conf["test_file"])),
                 digit_vocab=self._digit_vocab,
                 data_type_vocab=self._data_type_vocab,
                 operation_vocab=self._operation_vocab,

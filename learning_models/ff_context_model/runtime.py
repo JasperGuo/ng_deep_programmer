@@ -10,7 +10,7 @@ import argparse
 import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
-from model import RNNBasicModel
+from model import FFContextModel
 from data_iterator import DataIterator
 from vocab_manager import VocabManager
 
@@ -54,6 +54,7 @@ class ModelRuntime:
         self._learning_rate_decay_factor = self._conf["learning_rate_decay_factor"]
 
         self._curr_time = str(int(time.time()))
+
         self._log_dir = os.path.abspath(self._conf["log_dir"])
         self._result_log_base_pardir = os.path.abspath(os.path.join(os.path.curdir, self._conf["result_log"]))
         self._checkpoint_pardir = os.path.abspath(os.path.join(os.path.curdir, self._conf["checkpoint_path"]))
@@ -148,7 +149,7 @@ class ModelRuntime:
         self._session = tf.Session()
 
         with tf.variable_scope("deep_programmer") as scope:
-            self._train_model = RNNBasicModel(
+            self._train_model = FFContextModel(
                 data_type_vocab_manager=self._data_type_vocab,
                 operation_vocab_manager=self._operation_vocab,
                 digit_vocab_manager=self._digit_vocab,
@@ -156,7 +157,7 @@ class ModelRuntime:
                 is_test=False
             )
             scope.reuse_variables()
-            self._test_model = RNNBasicModel(
+            self._test_model = FFContextModel(
                 data_type_vocab_manager=self._data_type_vocab,
                 operation_vocab_manager=self._operation_vocab,
                 digit_vocab_manager=self._digit_vocab,

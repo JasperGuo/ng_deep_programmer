@@ -9,7 +9,7 @@ import util
 import models_util
 
 
-class RNNBasicModel:
+class FFContextModel:
     epsilon = 1e-5
 
     def __init__(
@@ -65,9 +65,6 @@ class RNNBasicModel:
 
         self._gradient_clip = util.get_value(opts, "gradient_clip", 5)
 
-        # Regularization term
-        self._regularization_terms = list()
-
         if self._is_test:
             self._build_test_graph()
         else:
@@ -83,6 +80,15 @@ class RNNBasicModel:
             self._memory_entry_value_size = tf.placeholder(tf.int32,
                                                            [self._batch_with_case_and_memory_size],
                                                            name="memory_entry_value_size")
+            self._memory_entry_scr_1 = tf.placeholder(tf.int32, [
+                self._batch_with_case_and_memory_size
+            ], name="memory_entry_scr_1")
+            self._memory_entry_scr_2 = tf.placeholder(tf.int32, [
+                self._batch_with_case_and_memory_size
+            ], name="memory_entry_scr_2")
+            self._memory_entry_operation = tf.placeholder(tf.int32, [
+                self._batch_with_case_and_memory_size
+            ], name="memory_entry_operation")
             self._memory_size = tf.placeholder(tf.int32, [self._batch_with_case_size], name="memory_size")
             self._output_data_type = tf.placeholder(tf.int32, [self._batch_with_case_size], name="output_data_type")
             self._output_value = tf.placeholder(tf.int32, [self._batch_with_case_size, self._max_value_size],
@@ -127,7 +133,23 @@ class RNNBasicModel:
             )
             digit_embedding = tf.concat([pad_embedding, digit_embedding], axis=0)
 
-        return data_type_embedding, digit_embedding
+        with tf.variable_scope("operation_embedding_layer"):
+            pad_embedding = tf.get_variable(
+                initializer=tf.zeros([1, self._operation_embedding_dim], dtype=tf.float32),
+                name="operation_pad_embedding",
+                trainable=False
+            )
+            operation_embedding = tf.get_variable(
+                initializer=tf.truncated_normal(
+                    [self._operation_vocab_manager.vocab_len - 1, self._operation_embedding_dim],
+                    stddev=0.5
+                ),
+                dtype=tf.float32,
+                name="operation_embedding"
+            )
+            operation_embedding = tf.concat([pad_embedding, operation_embedding], axis=0)
+
+        return data_type_embedding, digit_embedding, operation_embedding
 
     def _calc_position_embedding(self, value_size, shape_0):
         """
@@ -262,16 +284,16 @@ class RNNBasicModel:
         with tf.variable_scope("output_encoder"):
             layer_1_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._data_type_embedding_dim + self._digit_embedding_dim * self._max_value_size,
-                       self._output_encoder_layer_1_dim],
+                shape=[self._output_encoder_layer_2_dim,
+                       self._output_encoder_layer_2_dim],
                 name="weights_1"
             )
             layer_1_bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._output_encoder_layer_1_dim],
+                shape=[self._output_encoder_layer_2_dim],
                 name="bias_1"
             )
-
+            """
             layer_2_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._output_encoder_layer_1_dim,
@@ -283,15 +305,15 @@ class RNNBasicModel:
                 shape=[self._output_encoder_layer_2_dim],
                 name="bias_2"
             )
-
+            """
             weights = {
                 "W1": layer_1_weights,
-                "W2": layer_2_weights
+                # "W2": layer_2_weights
             }
 
             bias = {
                 "b1": layer_1_bias,
-                "b2": layer_2_bias
+                # "b2": layer_2_bias
             }
 
             return weights, bias
@@ -331,7 +353,8 @@ class RNNBasicModel:
 
             return layer_2
 
-    def _encode_output(self, weights, biases, data_type_embedded, value_embedded, value_size):
+    def _encode_output(self, weights, biases, projection_weights, projection_bias, data_type_embedded, value_embedded,
+                       value_size):
         """
         Encode output
         :param weights:
@@ -363,7 +386,296 @@ class RNNBasicModel:
             layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
             layer_2 = tf.add(tf.matmul(layer_1, weights["W2"]), biases["b2"])
 
-            return layer_2
+            layer_3 = tf.tanh(
+                tf.add(
+                    tf.matmul(
+                        layer_2,
+                        projection_weights["W1"]
+                    ),
+                    projection_bias["b1"]
+                )
+            )
+
+            return layer_3
+
+    def _build_context_encoder(self):
+        with tf.variable_scope("context_weights"):
+
+            # Gated Context Encoder
+            operation_src_1_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="operation_src_1_weights"
+            )
+
+            operation_src_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="operation_src_2_weights"
+            )
+
+            source_1_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="source_1_weights"
+            )
+
+            source_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="source_2_weights"
+            )
+
+            update_gate_src_1_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="update_gate_scr_1_bias"
+            )
+
+            update_gate_scr_2_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="update_gate_scr_2_bias"
+            )
+
+            context_src_1_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="context_src_1_weights"
+            )
+
+            context_src_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="context_src_2_weights"
+            )
+
+            context_opt_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="context_opt_weights"
+            )
+
+            layer_2_weights = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="layer_2_weights"
+            )
+
+            layer_2_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="layer_2_bias"
+            )
+
+            combine_value_weights_1 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="combine_value_weights_1"
+            )
+
+            combine_value_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._memory_encoder_layer_2_dim,
+                       self._memory_encoder_layer_2_dim],
+                name="combine_value_weights_2"
+            )
+
+            combine_value_bias = tf.get_variable(
+                initializer=tf.zeros_initializer(),
+                shape=[self._memory_encoder_layer_2_dim],
+                name="combine_value_bias"
+            )
+
+            w = {
+                "operation_src_1_weights": operation_src_1_weights,
+                "operation_src_2_weights": operation_src_2_weights,
+                "source_1_weights": source_1_weights,
+                "source_2_weights": source_2_weights,
+                "context_src_1_weights": context_src_1_weights,
+                "context_src_2_weights": context_src_2_weights,
+                "context_opt_weights": context_opt_weights,
+                "combine_value_weights_1": combine_value_weights_1,
+                "combine_value_weights_2": combine_value_weights_2,
+                "layer_2_weights": layer_2_weights
+            }
+
+            b = {
+                "combine_value_bias": combine_value_bias,
+                "update_gate_src_1_bias": update_gate_src_1_bias,
+                "update_gate_src_2_bias": update_gate_scr_2_bias,
+                "layer_2_bias": layer_2_bias
+            }
+
+            return w, b
+
+    def _encode_context(self, weights, bias, encoded_memory, memory_entry_src1, memory_entry_src2, memory_embedded_opt):
+        """
+        Encode Context
+        :param weights:
+                {
+                    "operation_weights":,
+                    "source_1_weights":,
+                    "source_2_weights
+                }
+        :param bias:
+                {
+                    "bias":
+                }
+        :param encoded_memory:      [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+        :param memory_entry_src1:   [batch_size*case_num*max_memory_size]
+        :param memory_entry_src2:   [batch_size*case_num*max_memory_size]
+        :param memory_embedded_opt:          [batch_size*case_num*max_memory_size, operation_embedding_dim]
+        :return:
+            [batch_size*case_num*max_memory_size, operation_embedding_dim]
+        """
+        memory_size = self._max_memory_size + 1
+        # Expand Memory
+        zeros = tf.zeros([self._batch_with_case_size, 1, self._memory_encoder_layer_2_dim], dtype=tf.float32)
+        # Shape: [batch_size*case_num, max_memory_size+1, memory_encoder_layer_2_dim]
+        expaned_memory = tf.concat(
+            [
+                tf.reshape(
+                    encoded_memory,
+                    shape=[self._batch_with_case_size, self._max_memory_size, self._memory_encoder_layer_2_dim]
+                ),
+                zeros
+            ],
+            axis=1
+        )
+
+        # Calculate index
+        first_index = tf.reshape(
+            tf.tile(
+                tf.reshape(
+                    tf.range(self._batch_with_case_size),
+                    shape=[self._batch_with_case_size, 1]
+                ),
+                [1, self._max_memory_size]
+            ),
+            shape=[self._batch_with_case_and_memory_size]
+        )
+        # Shape: [batch_size*case_num*max_memory_size, batch_size*case_num*max_memory_size]
+        src1_indices = tf.stack(
+            [
+                first_index,
+                memory_entry_src1
+            ],
+            axis=1
+        )
+        # Shape: [batch_size*case_num*max_memory_size, batch_size*case_num*max_memory_size]
+        src2_indices = tf.stack(
+            [
+                first_index,
+                memory_entry_src2
+            ],
+            axis=1
+        )
+
+        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+        source_1 = tf.gather_nd(expaned_memory, src1_indices)
+        source_2 = tf.gather_nd(expaned_memory, src2_indices)
+
+        # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+
+        with tf.name_scope("gated_encode_context"):
+            # Source 1 Gate
+            update_src_1 = tf.sigmoid(
+                tf.add(
+                    tf.add(
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["operation_src_1_weights"]
+                        ),
+                        tf.matmul(
+                            source_1,
+                            weights["source_1_weights"]
+                        )
+                    ),
+                    bias["update_gate_src_1_bias"]
+                )
+            )
+
+            # Source 2 Gate
+            update_src_2 = tf.sigmoid(
+                tf.add(
+                    tf.add(
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["operation_src_2_weights"]
+                        ),
+                        tf.matmul(
+                            source_2,
+                            weights["source_2_weights"]
+                        )
+                    ),
+                    bias["update_gate_src_2_bias"]
+                )
+            )
+
+            # Gated Context
+            # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+            context = tf.tanh(
+                tf.add_n(
+                    [
+                        tf.matmul(
+                            memory_embedded_opt,
+                            weights["context_opt_weights"]
+                        ),
+                        tf.matmul(
+                            tf.multiply(
+                                update_src_1,
+                                source_1
+                            ),
+                            weights["context_src_1_weights"]
+                        ),
+                        tf.matmul(
+                            tf.multiply(
+                                update_src_2,
+                                source_2
+                            ),
+                            weights["context_src_2_weights"]
+                        )
+                    ]
+                )
+            )
+
+            layer_2 = tf.add(
+                tf.matmul(
+                    context,
+                    weights["layer_2_weights"]
+                ),
+                bias["layer_2_bias"]
+            )
+
+        with tf.name_scope("combine_context"):
+            # Shape: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
+            combined = tf.nn.relu(
+                tf.add(
+                    tf.add_n([
+                        tf.matmul(
+                            layer_2,
+                            weights["combine_value_weights_1"]
+                        ),
+                        tf.matmul(
+                            encoded_memory,
+                            weights["combine_value_weights_2"]
+                        )
+                    ]),
+                    bias["combine_value_bias"]
+                )
+            )
+
+        return combined
 
     def _build_memory_output_attention_layer(self):
         with tf.variable_scope("memory_output_attention"):
@@ -381,88 +693,40 @@ class RNNBasicModel:
             )
             score_weights_1 = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[self._memory_encoder_layer_2_dim * 2,
+                shape=[self._memory_encoder_layer_2_dim,
                        self._output_encoder_layer_2_dim],
                 name="score_weights_1"
             )
 
-            score_weights_2 = tf.get_variable(
-                initializer=tf.contrib.layers.xavier_initializer(),
-                shape=[
-                    self._memory_encoder_layer_2_dim,
-                    1
-                ],
-                name="score_weights_2"
-            )
-
-            score_bias_1 = tf.get_variable(
-                initializer=tf.zeros_initializer(),
-                shape=[
-                    self._memory_encoder_layer_2_dim
-                ],
-                name="score_bias_1"
-            )
-
-            score_bias_2 = tf.get_variable(
-                initializer=tf.zeros_initializer(),
-                shape=[1],
-                name="score_bias_2"
-            )
-
             w = {
                 "context_activate_weights": weights,
-                "score_weights_1": score_weights_1,
-                "score_weights_2": score_weights_2
+                "score_weights_1": score_weights_1
             }
 
             b = {
-                "context_activate_bias": bias,
-                "score_bias_1": score_bias_1,
-                "score_bias_2": score_bias_2
+                "context_activate_bias": bias
             }
 
             return w, b
 
-    def _calc_attention_scores(self, score_weights, score_bias, encoded_memory, encoded_output):
+    def _calc_attention_scores(self, score_weights, encoded_memory, encoded_output):
         """
         Calculate attention score
         :param score_weights:
-        :param score_bias:
         :param encoded_memory: [batch_size*case_num*max_memory_size, memory_encoder_layer_2_dim]
         :param encoded_output: [batch_size*case_num*max_memory_size, output_encoder_layer_2_dim]
         :return:
             [batch_size*case_num*max_memory_size]
         """
-        feature_1 = tf.multiply(encoded_memory, encoded_output)
-        # feature_2 = tf.abs(tf.subtract(encoded_memory, encoded_output))
 
-        # Feature 3, capture the reverse order
-        reversed_memory = tf.reverse(encoded_memory, axis=[-1])
-        feature_3 = tf.multiply(reversed_memory, encoded_output)
-
-        feature = tf.concat([feature_1, feature_3], axis=1)
-
-        layer_1 = tf.tanh(
-            tf.add(
-                tf.matmul(
-                    feature,
-                    score_weights["score_weights_1"]
-                ),
-                score_bias["score_bias_1"]
-            )
-        )
-        layer_1 = tf.nn.dropout(layer_1, keep_prob=self._dnn_keep_prob)
-        output_layer = tf.reshape(
-            tf.add(
-                tf.matmul(
-                    layer_1,
-                    score_weights["score_weights_2"]
-                ),
-                score_bias["score_bias_2"]
+        scores = tf.reduce_sum(
+            tf.multiply(
+                tf.matmul(encoded_memory, score_weights["score_weights_1"]),
+                encoded_output
             ),
-            shape=[self._batch_with_case_and_memory_size]
+            axis=1
         )
-        return output_layer
+        return scores
 
     def _calc_memory_output_attention(self, attention_weights, attention_bias, encoded_memory,
                                       encoded_output, memory_size):
@@ -472,7 +736,7 @@ class RNNBasicModel:
         :param encoded_output:      [batch_size*case_num, output_encoder_layer_2_dim]
         :param memory_size:         [batch_size*case_num]
         :return:
-            [batch_size*case_num, guide_hidden_dim]
+            [batch_size*case_num, memory_encoder_layer_2_dim]
         """
         # Replicate encoded_output
         # Shape: [batch_size*case_num*max_memory_size, output_encoder_layer_2_dim]
@@ -487,7 +751,7 @@ class RNNBasicModel:
         # Calculate Attention Score
         # Shape: [batch_size*case_num, max_memory_size]
         scores = tf.reshape(
-            self._calc_attention_scores(attention_weights, attention_bias, encoded_memory, replicated_encoded_output),
+            self._calc_attention_scores(attention_weights, encoded_memory, replicated_encoded_output),
             shape=[self._batch_with_case_size, self._max_memory_size]
         )
 
@@ -557,16 +821,17 @@ class RNNBasicModel:
                 shape=[self._guide_hidden_dim],
                 name="bias"
             )
+
             return attentive_context_weights, output_weights, bias
 
     def _calc_guide_vector(self, guide_context_weights, guide_output_weights, guide_bias, context_vector,
                            encoded_output):
         """
             RELU(W1*context_vector + W2*encoded_output + bias)
-        :param guide_context_weights:   [guide_hidden_dim, memory_encoder_layer_2_dim]
+        :param guide_context_weights:   [guide_hidden_dim, memory_encoder_layer_2_dim*2]
         :param guide_output_weights:    [guide_hidden_dim, output_encoder_layer_2_dim]
         :param guide_bias:              [guide_hidden_dim]
-        :param context_vector:          [batch_size*case_num, memory_encoder_layer_2_dim]
+        :param context_vector:          [batch_size*case_num, memory_encoder_layer_2_dim*2]
         :param encoded_output:          [batch_size*case_num, output_encoder_layer_2_dim]
         :return:
             [batch_size*case_num, guide_hidden_Dim]
@@ -606,18 +871,34 @@ class RNNBasicModel:
             output_weights = tf.get_variable(
                 initializer=tf.contrib.layers.xavier_initializer(),
                 shape=[self._operation_selector_dim,
-                       self._operation_vocab_manager.vocab_len],
+                       self._operation_embedding_dim],
                 name="output_weights"
             )
             output_bias = tf.get_variable(
                 initializer=tf.zeros_initializer(),
-                shape=[self._operation_vocab_manager.vocab_len],
+                shape=[self._operation_embedding_dim],
                 name="output_bias"
+            )
+
+            attention_weights_1 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_1"
+            )
+
+            attention_weights_2 = tf.get_variable(
+                initializer=tf.contrib.layers.xavier_initializer(),
+                shape=[self._operation_embedding_dim,
+                       self._operation_embedding_dim],
+                name="attention_weights_2"
             )
 
             weights = {
                 "W1": layer_1_weights,
-                "output_W": output_weights
+                "output_W": output_weights,
+                "attention_weights_1": attention_weights_1,
+                "attention_weights_2": attention_weights_2
             }
 
             bias = {
@@ -627,36 +908,56 @@ class RNNBasicModel:
 
             return weights, bias
 
-    def _select_operation(self, selector_weights, selector_biases, guide_vector):
+    def _select_operation(self, selector_weights, selector_biases, guide_vector, operation_embedding):
         """
         :param selector_weights:
         :param selector_biases:
         :param guide_vector: [batch_size*case_num, guide_hidden_dim]
+        :param operation_embedding: [operation_vocab_len, operation_embedding_dim]
         :return:
             [batch_size, operation_vocab_len], [batch_size]
         """
-        with tf.name_scope("encode_operation"):
+        with tf.name_scope("select_operation"):
             # Shape: [batch_size*case_num, operation_selector_dim]
             layer_1 = tf.add(tf.matmul(guide_vector, selector_weights["W1"]), selector_biases["b1"])
             layer_1 = tf.nn.relu(layer_1)
-            layer_1 = tf.nn.dropout(layer_1, self._dnn_keep_prob)
+            output_layer = tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
+                                  selector_biases["output_b"])
 
-            output_layer = tf.reduce_sum(
+            # Shape: [batch_size, operation_embedding_dim]
+            pooled_output_layer = tf.reduce_sum(
                 tf.transpose(
                     tf.reshape(
-                        tf.add(tf.matmul(layer_1, selector_weights["output_W"]),
-                               selector_biases["output_b"]),
-                        shape=[self._batch_size, self._case_num, self._operation_vocab_manager.vocab_len]
+                        output_layer,
+                        shape=[self._batch_size, self._case_num, self._operation_embedding_dim]
                     ),
                     perm=[0, 2, 1]
                 ),
                 axis=2
             )
 
-            softmax_output = tf.nn.softmax(output_layer)
-            selection = tf.arg_max(softmax_output, dimension=1)
+            with tf.name_scope("calc_operation_attention"):
+                # Calculate attention to operation embedding
+                weighted_pooled_output_layer = tf.matmul(
+                    pooled_output_layer,
+                    selector_weights["attention_weights_1"]
+                )
 
-            return softmax_output, selection
+                weighted_operation_embedding = tf.matmul(
+                    operation_embedding,
+                    selector_weights["attention_weights_2"]
+                )
+
+                attention_scores = tf.matmul(
+                    weighted_pooled_output_layer,
+                    weighted_operation_embedding,
+                    transpose_b=True
+                )
+
+                softmax_output = tf.nn.softmax(attention_scores, dim=-1)
+                selection = tf.arg_max(softmax_output, dimension=1)
+
+                return softmax_output, selection
 
     def _build_train_graph(self):
         """
@@ -665,30 +966,44 @@ class RNNBasicModel:
         """
         self._build_input_nodes()
 
-        data_type_embedding, digit_embedding = self._build_embedding_layer()
+        data_type_embedding, digit_embedding, operation_embedding = self._build_embedding_layer()
 
         memory_entry_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._memory_entry_data_type)
         memory_entry_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._memory_entry_value)
         output_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._output_data_type)
         output_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._output_value)
+        operation_embedded = tf.nn.embedding_lookup(operation_embedding, self._memory_entry_operation)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights,
+                                             memory_encoder_biases,
+                                             output_encoder_weights,
+                                             output_encoder_biases,
+                                             output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
+        context_encoder_weights, context_encoder_bias = self._build_context_encoder()
+        context_encoded_memory = self._encode_context(
+            weights=context_encoder_weights,
+            bias=context_encoder_bias,
+            encoded_memory=encoded_memory,
+            memory_entry_src1=self._memory_entry_scr_1,
+            memory_entry_src2=self._memory_entry_scr_2,
+            memory_embedded_opt=operation_embedded
+        )
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
-            encoded_memory=encoded_memory,
+            encoded_memory=context_encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
         )
@@ -710,7 +1025,8 @@ class RNNBasicModel:
         operation_softmax_output, selected_operations = self._select_operation(
             selector_weights=operation_selector_weights,
             selector_biases=operation_selector_biases,
-            guide_vector=guide_vector
+            guide_vector=guide_vector,
+            operation_embedding=operation_embedding
         )
 
         # Prevent inf
@@ -737,8 +1053,14 @@ class RNNBasicModel:
             # [batch_size]
             log_probs = tf.log(truth_operations_probs)
 
-            self._loss = tf.negative(
-                tf.reduce_mean(log_probs)
+            vars = tf.trainable_variables()
+            l2_loss = tf.add_n([tf.nn.l2_loss(v) for v in vars
+                                if 'bias' not in v.name]) * 0.001
+            self._loss = tf.add(
+                tf.negative(
+                    tf.reduce_mean(log_probs),
+                ),
+                l2_loss
             )
 
         with tf.name_scope("back_propagation"):
@@ -758,30 +1080,44 @@ class RNNBasicModel:
         """
         self._build_input_nodes()
 
-        data_type_embedding, digit_embedding = self._build_embedding_layer()
+        data_type_embedding, digit_embedding, operation_embedding = self._build_embedding_layer()
 
         memory_entry_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._memory_entry_data_type)
         memory_entry_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._memory_entry_value)
         output_data_type_embedded = tf.nn.embedding_lookup(data_type_embedding, self._output_data_type)
         output_value_embedded = tf.nn.embedding_lookup(digit_embedding, self._output_value)
+        operation_embedded = tf.nn.embedding_lookup(operation_embedding, self._memory_entry_operation)
 
         memory_encoder_weights, memory_encoder_biases = self._build_memory_encoder()
-        # output_encoder_weights, output_encoder_biases = self._build_output_encoder()
+        output_encoder_weights, output_encoder_biases = self._build_output_encoder()
 
         # Encode Memory and Output
         encoded_memory = self._encode_memory(memory_encoder_weights, memory_encoder_biases,
                                              memory_entry_data_type_embedded, memory_entry_value_embedded,
                                              self._memory_entry_value_size)
-        encoded_output = self._encode_output(memory_encoder_weights, memory_encoder_biases, output_data_type_embedded,
+        encoded_output = self._encode_output(memory_encoder_weights,
+                                             memory_encoder_biases,
+                                             output_encoder_weights,
+                                             output_encoder_biases,
+                                             output_data_type_embedded,
                                              output_value_embedded,
                                              self._output_value_size)
 
+        context_encoder_weights, context_encoder_bias = self._build_context_encoder()
+        context_encoded_memory = self._encode_context(
+            weights=context_encoder_weights,
+            bias=context_encoder_bias,
+            encoded_memory=encoded_memory,
+            memory_entry_src1=self._memory_entry_scr_1,
+            memory_entry_src2=self._memory_entry_scr_2,
+            memory_embedded_opt=operation_embedded
+        )
         # Guide
         attention_weights, attention_bias = self._build_memory_output_attention_layer()
         attentive_context_vector, self._attentive_context_weights = self._calc_memory_output_attention(
             attention_weights=attention_weights,
             attention_bias=attention_bias,
-            encoded_memory=encoded_memory,
+            encoded_memory=context_encoded_memory,
             encoded_output=encoded_output,
             memory_size=self._memory_size
         )
@@ -803,7 +1139,8 @@ class RNNBasicModel:
         operation_softmax_output, selected_operations = self._select_operation(
             selector_weights=operation_selector_weights,
             selector_biases=operation_selector_biases,
-            guide_vector=guide_vector
+            guide_vector=guide_vector,
+            operation_embedding=operation_embedding
         )
         self._operation_prediction = selected_operations
 
@@ -812,6 +1149,9 @@ class RNNBasicModel:
         feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
         feed_dict[self._memory_entry_value] = batch.memory_entry_value
         feed_dict[self._memory_entry_value_size] = batch.memory_entry_value_size
+        feed_dict[self._memory_entry_scr_1] = batch.memory_entry_src1
+        feed_dict[self._memory_entry_scr_2] = batch.memory_entry_src2
+        feed_dict[self._memory_entry_operation] = batch.memory_entry_opt
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
@@ -826,6 +1166,9 @@ class RNNBasicModel:
         feed_dict[self._memory_entry_data_type] = batch.memory_entry_data_type
         feed_dict[self._memory_entry_value] = batch.memory_entry_value
         feed_dict[self._memory_entry_value_size] = batch.memory_entry_value_size
+        feed_dict[self._memory_entry_scr_1] = batch.memory_entry_src1
+        feed_dict[self._memory_entry_scr_2] = batch.memory_entry_src1
+        feed_dict[self._memory_entry_operation] = batch.memory_entry_opt
         feed_dict[self._memory_size] = batch.memory_size
         feed_dict[self._output_data_type] = batch.output_data_type
         feed_dict[self._output_value] = batch.output_value
